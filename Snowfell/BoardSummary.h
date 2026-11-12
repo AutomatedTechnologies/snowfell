@@ -21,9 +21,27 @@ NS_ASSUME_NONNULL_BEGIN
 // Status-option order from sf_item_values; falls back to the bare option
 // list when the board carries no valued items yet.
 @property (nonatomic, copy) NSString *statusSummary;
+// Derived board state (schema v9, sf_board_state — design note 04): the
+// backend pipeline derives COMPLETE when every non-archived item sits
+// in the board's own terminal Status option. GitHub never auto-closes
+// a project, so sf_boards.closed alone presents finished boards as
+// Open forever; derivedState is the presentation state, `closed` the
+// raw mirror. hasDerivedState is NO on pre-v9 snapshots (no
+// sf_board_state table) and every derived display falls back to the
+// raw state, unchanged from before.
+@property (nonatomic, assign) BOOL hasDerivedState;
+@property (nonatomic, copy, nullable) NSString *derivedState;   // ACTIVE | COMPLETE
+@property (nonatomic, assign) NSInteger derivedItemsTotal;      // sf_board_state.items_total
+@property (nonatomic, assign) NSInteger derivedItemsTerminal;   // sf_board_state.items_terminal
+@property (nonatomic, copy, nullable) NSString *terminalOptionName;
 
 @property (nonatomic, readonly) NSString *ownerDisplay;  // "smit4786 (user)"
-@property (nonatomic, readonly) NSString *stateDisplay;  // Open | Closed | Archived
+@property (nonatomic, readonly) NSString *stateDisplay;  // Complete | Open | Closed | Archived
+@property (nonatomic, readonly) NSString *githubStateDisplay;  // "GitHub: Open" | "GitHub: Closed"
+// Secondary detail for headers/tooltips, e.g.
+// "Complete · GitHub: Open · 8 of 8 in 'Done'" — derived state first,
+// the honest raw mirror second.
+@property (nonatomic, readonly) NSString *stateDetailDisplay;
 
 @end
 

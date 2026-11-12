@@ -333,11 +333,17 @@
         initWithString:[NSString stringWithFormat:@"Board #%ld · %@", (long)board.number, board.title]
             attributes:@{NSFontAttributeName: [AcademyTheme bodySemiboldFont],
                          NSForegroundColorAttributeName: [AcademyTheme inkColor]}];
-    [summary appendAttributedString:[[NSAttributedString alloc]
-        initWithString:[NSString stringWithFormat:
+    NSString *detail = [NSString stringWithFormat:
                         @" · %@ · %lu items · %lu status columns (the board's own vocabulary)",
                         board.ownerDisplay,
-                        (unsigned long)[items count], (unsigned long)[options count]]
+                        (unsigned long)[items count], (unsigned long)[options count]];
+    if (board.hasDerivedState) {
+        // Derived state first, raw GitHub mirror second (design note
+        // 04): a finished board must not present as merely "Open".
+        detail = [detail stringByAppendingFormat:@" · %@", board.stateDetailDisplay];
+    }
+    [summary appendAttributedString:[[NSAttributedString alloc]
+        initWithString:detail
             attributes:@{NSFontAttributeName: [AcademyTheme bodyFont],
                          NSForegroundColorAttributeName: [AcademyTheme inkSecondaryColor]}]];
     [_summaryField setAttributedStringValue:summary];

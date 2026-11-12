@@ -11,11 +11,13 @@
 // names. Selection follows the baseline: ink background, white text.
 // READ-ONLY exactly as before: SELECTs through SnapshotStore, no writes.
 //
-// Health dot derivation (presentation-only, from the board's own Status
-// vocabulary — the terminal option is the LAST option in the board's own
-// order): full = every item sits in the terminal status; half = at least
-// one item does; hollow = none do, or the board is empty/closed/archived.
-// Open / Done = itemCount − terminal count / terminal count.
+// Health dot derivation (presentation-only): on schema v9 snapshots the
+// registry's own sf_board_state derivation governs (design note 04);
+// on earlier snapshots the lens reads the board's own Status vocabulary
+// (terminal option = the LAST option in the board's own order): full =
+// every item sits in the terminal status; half = at least one item does;
+// hollow = none do, or the board is empty/closed/archived.
+// Open / Done = open count / terminal count, same source discipline.
 
 typedef NS_ENUM(NSInteger, PortfolioHealth) {
     PortfolioHealthHollow = 0,
@@ -290,10 +292,29 @@ typedef NS_ENUM(NSInteger, PortfolioHealth) {
             }
         }
 
+        // Schema v9 snapshots carry the registry's own derivation
+        // (sf_board_state, design note 04): when present it governs the
+        // dot and the split — its terminal resolution is stricter than
+        // this lens's last-option reading of the summary string, which
+        // remains the fallback for pre-v9 snapshots.
+        if (board.hasDerivedState) {
+            doneCount = board.derivedItemsTerminal;
+            openCount = MAX(board.derivedItemsTotal - board.derivedItemsTerminal, 0);
+            if (board.closed || board.archivedHidden || board.derivedItemsTotal == 0) {
+                health = PortfolioHealthHollow;
+            } else if ([board.derivedState isEqualToString:@"COMPLETE"]) {
+                health = PortfolioHealthFull;
+            } else if (board.derivedItemsTerminal > 0) {
+                health = PortfolioHealthHalf;
+            } else {
+                health = PortfolioHealthHollow;
+            }
+        }
+
         NSString *vocabulary = ([options count] > 0)
             ? [options componentsJoinedByString:@" · "]
             : board.statusSummary;
-        NSString *split = (board.itemCount > 0)
+        NSString *split = ((board.hasDerivedState ? board.derivedItemsTotal : board.itemCount) > 0)
             ? [NSString stringWithFormat:@"%ld / %ld", (long)openCount, (long)doneCount]
             : @"—";
 
@@ -468,6 +489,12 @@ typedef NS_ENUM(NSInteger, PortfolioHealth) {
 }
 
 - (NSString *)tableView:(NSTableView *)tableView toolTipForCell:(NSCell *)cell rect:(NSRectPointer)rect tableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row mouseLocation:(NSPoint)mouseLocation {
+    if ([[tableColumn identifier] isEqualToString:@"state"]) {
+        // The cell shows the derived state (design note 04); the
+        // tooltip carries the full detail incl. the raw GitHub mirror.
+        BoardSummary *board = self.visibleBoards[(NSUInteger)row];
+        return board.stateDetailDisplay;
+    }
     if ([[tableColumn identifier] isEqualToString:@"board"]) {
         BoardSummary *board = self.visibleBoards[(NSUInteger)row];
         if ([board.shortDescription length] > 0) {

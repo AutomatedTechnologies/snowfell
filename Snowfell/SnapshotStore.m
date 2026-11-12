@@ -278,10 +278,28 @@ static NSString *ColumnNullableText(sqlite3_stmt *statement, int column) {
         }
         return nil;
     }
-    const char *sql =
-        "SELECT gh_node_id, title, owner_login, owner_type, number, "
-        "short_description, closed, archived_hidden, url, item_count "
-        "FROM sf_boards ORDER BY closed ASC, archived_hidden ASC, owner_type DESC, number ASC";
+    // Derived board state (schema v9, sf_board_state — design note
+    // 04): present only in snapshots at v9-0042 and later. Older
+    // snapshots keep the exact raw-state behavior; the join is
+    // presence-guarded, never assumed.
+    BOOL hasBoardState = NO;
+    sqlite3_stmt *probe = NULL;
+    if (sqlite3_prepare_v2(_db,
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sf_board_state'",
+            -1, &probe, NULL) == SQLITE_OK) {
+        hasBoardState = (sqlite3_step(probe) == SQLITE_ROW);
+    }
+    sqlite3_finalize(probe);
+    NSString *sqlString = hasBoardState
+        ? @"SELECT b.gh_node_id, b.title, b.owner_login, b.owner_type, b.number, "
+          @"b.short_description, b.closed, b.archived_hidden, b.url, b.item_count, "
+          @"s.derived_state, s.items_total, s.items_terminal, s.terminal_option_name "
+          @"FROM sf_boards b LEFT JOIN sf_board_state s ON s.board_id = b.gh_node_id "
+          @"ORDER BY b.closed ASC, b.archived_hidden ASC, b.owner_type DESC, b.number ASC"
+        : @"SELECT gh_node_id, title, owner_login, owner_type, number, "
+          @"short_description, closed, archived_hidden, url, item_count "
+          @"FROM sf_boards ORDER BY closed ASC, archived_hidden ASC, owner_type DESC, number ASC";
+    const char *sql = [sqlString UTF8String];
     sqlite3_stmt *statement = NULL;
     if (sqlite3_prepare_v2(_db, sql, -1, &statement, NULL) != SQLITE_OK) {
         if (error != NULL) {
@@ -305,6 +323,15 @@ static NSString *ColumnNullableText(sqlite3_stmt *statement, int column) {
         board.archivedHidden = (sqlite3_column_int(statement, 7) != 0);
         board.url = ColumnText(statement, 8);
         board.itemCount = sqlite3_column_int64(statement, 9);
+        if (hasBoardState && sqlite3_column_type(statement, 10) != SQLITE_NULL) {
+            board.hasDerivedState = YES;
+            board.derivedState = ColumnText(statement, 10);
+            board.derivedItemsTotal = sqlite3_column_int64(statement, 11);
+            board.derivedItemsTerminal = sqlite3_column_int64(statement, 12);
+            const unsigned char *termName = sqlite3_column_text(statement, 13);
+            board.terminalOptionName = (termName != NULL)
+                ? [NSString stringWithUTF8String:(const char *)termName] : nil;
+        }
         board.statusSummary = [self statusSummaryForBoard:board.nodeID];
         [boards addObject:board];
     }
