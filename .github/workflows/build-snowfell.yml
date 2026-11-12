@@ -1,0 +1,71 @@
+name: Snowfell test build
+
+on:
+  push:
+    branches: [build-test]
+  workflow_dispatch:
+
+# The publish step creates a GitHub Release with GITHUB_TOKEN (Distro-line
+# precedent, 2026-11-07: default token needs contents: write declared).
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build app icon (iconutil, from the committed iconset)
+        run: |
+          iconutil -c icns Snowfell/Resources/AppIcon.iconset -o Snowfell/Resources/Snowfell.icns
+          ls -la Snowfell/Resources/Snowfell.icns
+
+      - name: Build app (make app — clang, unsigned, x86_64, 10.13 floor)
+        run: |
+          set -o pipefail
+          make app 2>&1 | tee clang.log
+          cp Snowfell/Resources/Snowfell.icns Snowfell.app/Contents/Resources/
+          ls -la Snowfell.app/Contents/Resources/
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-log
+          path: clang.log
+
+      - name: Stamp build version and package app as zip
+        if: success()
+        run: |
+          APP="Snowfell.app"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion snowfell-test-${{ github.run_number }}" "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$APP/Contents/Info.plist"
+          file "$APP/Contents/MacOS/Snowfell"
+          ditto -c -k --keepParent "$APP" Snowfell-test.zip
+          ls -la Snowfell-test.zip
+
+      - name: Upload test build zip (survival copy)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snowfell-test-zip
+          path: Snowfell-test.zip
+
+      - name: Publish prerelease with test build
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BUILT=$(date -u '+%Y-%m-%d %H:%M UTC')
+          NOTES="Internal test build of Snowfell, the Detroit Automation Academy's Jira-style board app over GitHub Projects for macOS High Sierra: every Academy project board in one native window — portfolio, per-board kanban in each board's own status vocabulary, item detail, orchestration queue (enqueue-only in this build), roadmap, command palette, incidents lens — reading a pinned, hash-verified registry snapshot, fully offline. Write-back is compiled OFF in this build. Publisher: Detroit Automation Academy. Unsigned test build — not gate-cleared, not yet verified on the High Sierra rig; install from the Distro catalog (testing).
+
+          BUILD STAMP — Built: $BUILT · Build: snowfell-test-${{ github.run_number }} (CI run ${{ github.run_id }}) · Agent: Minion · Authorized: J. Spencer Smith, directive of 2026-11-11 (Snowfell SF-T8: deploy to Distro at testing)"
+          gh release create snowfell-test-${{ github.run_number }} Snowfell-test.zip \
+            --prerelease \
+            --title "Snowfell test build ${{ github.run_number }}" \
+            --notes "$NOTES"

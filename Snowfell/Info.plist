@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Snowfell</string>
+	<key>CFBundleExecutable</key>
+	<string>Snowfell</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.detroitautomationacademy.snowfell</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleIconFile</key>
+	<string>Snowfell</string>
+	<key>CFBundleName</key>
+	<string>Snowfell</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>10.13</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>SFBuildStage</key>
+	<string>SF-T8 Distro testing build — CI-compiled from Academy source (AutomatedTechnologies/snowfell); audit + SDS-10 conformance attested by the build line on the shipped artifact 2026-11-11 (Distro files/08 rule; SDS-10 §10.5). Runtime verification is the owner's, at the Air sitting — install from the Distro listing.</string>
+	<key>com.detroitautomationacademy.audit</key>
+	<dict>
+		<key>Authority</key>
+		<string>Detroit Automation Academy</string>
+		<key>Date</key>
+		<string>2026-11-11</string>
+		<key>Disassembled</key>
+		<true/>
+		<key>Recompiled</key>
+		<true/>
+		<key>Scanned</key>
+		<true/>
+	</dict>
+	<key>com.detroitautomationacademy.conformance</key>
+	<dict>
+		<key>Authority</key>
+		<string>Detroit Automation Academy</string>
+		<key>Date</key>
+		<string>2026-11-11</string>
+		<key>Logo</key>
+		<true/>
+		<key>MenuBar</key>
+		<true/>
+		<key>Standard</key>
+		<string>SDS-10</string>
+		<key>StartupSound</key>
+		<true/>
+		<key>VersionAtStartup</key>
+		<true/>
+	</dict>
+</dict>
+</plist>
