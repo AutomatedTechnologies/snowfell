@@ -1,4 +1,4 @@
-# Snowfell — SF-T2 App Shell + SF-T3 Read Views + SF-T4 Write-back (inert) + SF-T5 Orchestration Center + SF-T6 Snapshot Sync + SF-T7 Roadmap + Palette + Settings + SF-T11 Incidents Lens
+# Snowfell — SF-T2 App Shell + SF-T3 Read Views + SF-T4 Write-back (inert) + SF-T5 Orchestration Center + SF-T6 Snapshot Sync + SF-T7 Roadmap + Palette + Settings + SF-T11 Incidents Lens + SF-T12f Storage Lens (V12) · snowfell-test-2 UI uplift (`AcademyTheme`)
 
 Snowfell is the Detroit Automation Academy's Jira-style board over GitHub
 Projects: a macOS 10.13 AppKit application (Objective-C, programmatic UI,
@@ -909,6 +909,152 @@ incident.email.send enqueued as 'queued' with the incident_key payload — an ap
 bundled snapshot sha256 unchanged: 0ce065be0d9b59d727a135437f8a9cdfba25b6fb01c14a57715e4b7c80fa19a3
 SMOKE OK — roadmap/palette/incidents read the record; dispatch queues, never sends
 ```
+
+## Storage (SF-T12) — V12 Storage lens (View ▸ Storage, ⌘8)
+
+The app side of the multi-tenant cloud storage domain (design record
+`../03-CLOUD-STORAGE-DESIGN.md` — service §8 REST surface, app
+integration §9). Three new files, all in the Makefile manifest:
+
+- `CloudModels.h/.m` — the §9 value objects, estate model pattern
+  (copy properties, no logic beyond the factory): `CloudTenant`
+  (id, slug, display name, state, quota policy, usage figures),
+  `CloudLogin` (tenant, username, display name, role, state, lock,
+  last login — never credential material), `CloudBucket` (name,
+  backend, object count, total bytes, quota), `CloudObject` (key,
+  size, SHA-256 hex, content type), `CloudAuditEntry` (time, actor,
+  action, object, result), `CloudServiceHealth` (version, bind,
+  port, tenant count, uptime). Each carries
+  `+fromJSONDictionary:` mapping the API's snake_case keys.
+- `CloudServiceClient.h/.m` — the block-based async REST client over
+  `NSURLSession` for the §8 routes the lens uses: health, tenants
+  list/get/create/patch/close, usage, logins list/create/patch/delete
+  + admin password set + reset issue, backends list, buckets
+  list/create/delete, objects list/delete, audit list. Models ride
+  the factories above; usage and backends return their decoded
+  payloads verbatim (figures uncompressed).
+- `StorageViewController.h/.m` — the V12 lens in the V11 pattern
+  (programmatic AppKit, monochrome, 1120×680): left, the service
+  state line + Start/Stop Service + the tenant table; right, the
+  selected tenant's buckets (name, objects, bytes, quota), logins
+  (username, role, state, lock), and audit tail (time, actor, action,
+  result), with New Tenant… / Close Tenant… / New Login… /
+  Set Password… / Issue Reset… / Delete Login… / New Bucket… /
+  Delete Bucket… / Refresh.
+
+**Loopback-only client.** `CloudServiceClient` is the app's THIRD
+sanctioned `NSURLSession` file — a deliberate exception beside
+`GitHubProjectsClient` (inert, flag-locked) and `SnapshotSync`
+(read-only public GET), named as one in its header because §9 makes
+the lens a pure REST client of the service it administers: the
+console holds no second, privileged path to the data, contains no
+SQL, and never opens `cloud.db`. Its base URL is built in exactly one
+place and is literally `http://127.0.0.1:<port>` — the port from
+`NSUserDefaults` key `SnowfellCloudPort` (default 8471, edited in
+Preferences beside the existing settings; the host is never a
+setting) — and every assembled request URL's host is re-verified as
+`127.0.0.1` before the task resumes: a non-loopback path is refused
+in code (`CloudServiceClientErrorNonLoopbackRefused`), not merely
+never constructed. No network call exists anywhere in this tranche
+outside this client's loopback calls. Errors surface in the client's
+own domain with the §8 API error code preserved verbatim in
+`userInfo` (`CloudServiceErrorCodeKey`; the envelope's figures ride
+`CloudServiceErrorDetailKey`). List calls request the §8 maximum
+page (`limit=200`); following `meta.next_cursor` is a stated seam.
+Operator tenant scoping for the credential-scoped bucket/object
+routes follows the §8 audit route's own convention (`?tenant=<id>`,
+honored for operator callers) — stated in the client header.
+
+**CMS + dedup in the lens (SF-T12j).** The Content section under
+the buckets/logins/audit stack renders the §13.5 content model —
+collections (the structure tree: name, slug, parent), content items
+(slug, title, kind, state, current version, size), and the selected
+item's append-only version history (version, SHA-256 short, size,
+note, created) — through three more model classes (`CloudCollection`,
+`CloudContentItem`, `CloudContentVersion`) and the client's §13.7
+calls: collections list/create/delete, content list (collection /
+kind / state filters; a text query rides the §13.5 search route) /
+get / create / patch / delete, versions list/create, rollback, and
+the state route. Content is created and versioned by REFERENCING an
+already-uploaded blob id — payload bytes enter through the API's
+own upload callers, never through this lens, and downloads are not
+client calls either: the lens manages structure and references and
+handles no files, exactly as it lists object metadata without
+fetching object bytes. The section header carries the §13.6 dedup
+figures from the usage payload's `dedup` block (logical / physical /
+saved / ratio, plus blob and reference counts — quota charges
+physical bytes, so the savings accrue to the tenant), and Run GC…
+runs the §13.3 sweep for the selected tenant's scope in two steps:
+a dry run first, its aggregates (scanned / orphans) shown in the
+confirm sheet, and only then the real sweep via the operator route
+(`POST /v1/admin/gc` with the tenant id in the body — `/v1/gc` is
+the tenant_admin session route and refuses operator callers),
+reporting scanned / deleted / bytes reclaimed — aggregates only,
+per §13.8's discipline. Every content mutation goes through the
+same access-review confirm/prompt sheets as the rest of the lens.
+Honest limits unchanged: helper packaging rides the build line
+(performed by CI from snowfell-test-2), runtime proof rides the
+Air rig, and the lens was not run against a live service in this
+tranche — the CMS calls are built to the §13.7 contract the
+SF-T12i service lands against.
+
+**Keychain token + pairing flow.** The operator token is a Keychain
+generic-password item (service
+`com.detroitautomationacademy.snowfell.cloud-operator`, account
+`operator`; D4 custody). The client reads it at call time inside its
+single request builder, sets that request's `Authorization` header,
+and keeps it in no property; the presence probe is attributes-only.
+When no token is stored, the lens shows the PAIRING PANE instead of
+data: the §5.5 bootstrap instructions (first run writes the token
+once to `~/Library/Application Support/Snowfell/cloud/bootstrap-operator-token.txt`,
+mode 0600), a token field, and Save to Keychain
+(`saveOperatorToken:` → `SecItemAdd`/`SecItemUpdate`). The service
+deletes the bootstrap file on the first successful operator
+authentication; the pane instructs the same deletion by hand.
+
+**The service's standalone home** is `StorageService/` beside this
+app tree (portable C99 + sqlite3: `sfhttp` / `sfstore` / `sfauth` /
+`sfadapter` / `sfjson` / `sfsha256`, DDL in `schema_cloud.sql`) — it
+runs standalone from a terminal, owns
+`~/Library/Application Support/Snowfell/cloud/`, and is equally the
+integration suite's target; the lens is only its console. In the
+lens, service state comes from `GET /v1/health` polls (Stopped, or
+Running on 127.0.0.1:<port> — v<version>, with bind, tenant count,
+and uptime; a non-loopback bind is flagged in the line, §2.3).
+Start/Stop drive the bundled helper with `NSTask`
+(`-[NSBundle pathForAuxiliaryExecutable:@"SnowfellStorageService"]`):
+a service already answering health — e.g. run standalone — makes
+Start a no-op success and is never terminated by the lens; Stop
+terminates only a task this lens started, and the state line says
+whose service it is. Every mutation goes through a confirm sheet in
+access-review form naming the target: destination (the loopback base
+URL), operator (the Keychain token), the exact effect, and that
+declining sends nothing. An issued reset token is shown exactly
+once, in a selectable field, for out-of-band delivery (§5.4) and is
+kept nowhere.
+
+**Honest limits.** The helper joins the bundle at PACKAGING time
+(built by `StorageService/Makefile`, copied into
+`Contents/MacOS/` — from snowfell-test-2 the CI workflow performs
+this step: it builds the service for x86_64 / macOS 10.13 and places
+it in the bundle as `SnowfellStorageService`; the Makefile carries
+the note and the `app` target's compile line is unchanged), so a
+source build of the app alone lacks it: the lens then disables
+Start/Stop and states the reason in the service line rather than
+faking a start. The service itself (SF-T12c–e) is its own tranche
+and schema/0008 (SF-T12b) has since been applied by the registry
+single writer (snapshot v8-0041, bundled from snowfell-test-2);
+this tranche is the console.
+**VERIFY for SF-T12f is `./build.sh check` (below) plus the Air rig
+(owner's eyes) for runtime proof — nothing here claims runtime
+verification: no service was run against this client in this
+tranche, and the lens's REST contract is the suite-proven §8 API,
+not a second implementation.**
+
+Syntax check for this delivery (2026-11-12, estate recipe via
+`./build.sh check`): **31/31 files PASS, `ALL SYNTAX OK`, 0 errors,
+0 warnings in the new and touched files** (the three new sources +
+`AppDelegate.m` re-checked individually: silent).
 
 ## Known gap: AppIcon asset
 

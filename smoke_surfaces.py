@@ -10,9 +10,10 @@ views state:
     of 74 (design record §4 V5); dated items come only from those
     boards' EAV date values; a one-ended item (Start XOR Target) is a
     milestone, never a fabricated span.
-  * Palette: the five scopes resolve — boards, items, actions (20
-    manifest rows at v7-0031), deploy targets (5), drafts view (0 rows
-    until compositions exist — truthful, not a failure).
+  * Palette: the five scopes resolve — boards, items, actions (24
+    manifest rows at v8-0041 — schema/0008 added the 4 storage action
+    kinds to the 20 of v7-0031), deploy targets (5), drafts view (0
+    rows until compositions exist — truthful, not a failure).
   * Palette routing resolution: itemWithNodeID returns a real item for
     a palette hit (board user #3's first item).
   * Incidents: the queue reads exactly 5 incidents in deadline order
@@ -118,7 +119,7 @@ def main():
     actions = conn.execute("SELECT COUNT(*) FROM sf_actions").fetchone()[0]
     targets = conn.execute("SELECT COUNT(*) FROM sf_deploy_targets").fetchone()[0]
     drafts = conn.execute("SELECT COUNT(*) FROM sf_upcoming_drafts").fetchone()[0]
-    assert actions == 20, f"expected 20 sf_actions at v7-0031, got {actions}"
+    assert actions == 24, f"expected 24 sf_actions at v8-0041, got {actions}"
     assert targets == 5, f"expected 5 deploy targets, got {targets}"
     assert drafts == 0, f"expected 0 upcoming drafts (none composed yet), got {drafts}"
     print(f"palette scopes: boards={boards} actions={actions} targets={targets} drafts={drafts}")

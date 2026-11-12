@@ -29,6 +29,19 @@ jobs:
           cp Snowfell/Resources/Snowfell.icns Snowfell.app/Contents/Resources/
           ls -la Snowfell.app/Contents/Resources/
 
+      - name: Build storage service (SF-T12) and place helper in bundle
+        run: |
+          # Portable C99 + sqlite3; built for the same x86_64 / 10.13
+          # floor as the app and placed beside the app executable, where
+          # the V12 Storage lens's pathForAuxiliaryExecutable: looks.
+          make -C StorageService clean
+          make -C StorageService CC="clang -target x86_64-apple-macos10.13" CFLAGS="-std=c99 -O2 -Wall -Wextra" service 2>&1 | tee service-build.log
+          test -x StorageService/snowfell-storage-service
+          file StorageService/snowfell-storage-service
+          cp StorageService/snowfell-storage-service "Snowfell.app/Contents/MacOS/SnowfellStorageService"
+          chmod +x "Snowfell.app/Contents/MacOS/SnowfellStorageService"
+          ls -la Snowfell.app/Contents/MacOS/
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
@@ -64,7 +77,9 @@ jobs:
           BUILT=$(date -u '+%Y-%m-%d %H:%M UTC')
           NOTES="Internal test build of Snowfell, the Detroit Automation Academy's Jira-style board app over GitHub Projects for macOS High Sierra: every Academy project board in one native window — portfolio, per-board kanban in each board's own status vocabulary, item detail, orchestration queue (enqueue-only in this build), roadmap, command palette, incidents lens — reading a pinned, hash-verified registry snapshot, fully offline. Write-back is compiled OFF in this build. Publisher: Detroit Automation Academy. Unsigned test build — not gate-cleared, not yet verified on the High Sierra rig; install from the Distro catalog (testing).
 
-          BUILD STAMP — Built: $BUILT · Build: snowfell-test-${{ github.run_number }} (CI run ${{ github.run_id }}) · Agent: Minion · Authorized: J. Spencer Smith, directive of 2026-11-11 (Snowfell SF-T8: deploy to Distro at testing)"
+          NEW IN snowfell-test-2: (1) interface uplifted to the decision-gate HTML baseline — kanban columns as tinted wells with letterspaced uppercase headers, cards with full wrapping titles and label pills, portfolio as a view-based table with health dots and an Open / Done split per board; (2) the SF-T12 storage domain ships: the SnowfellStorageService helper is bundled in Contents/MacOS and the V12 Storage lens (View menu, Cmd-8) is live — multi-tenant storage/CMS over a loopback-only REST client, content-addressed dedup by SHA-256; (3) bundled registry snapshot advanced to v8-0041 (schema 8).
+
+          BUILD STAMP — Built: $BUILT · Build: snowfell-test-${{ github.run_number }} (CI run ${{ github.run_id }}) · Agent: Minion · Authorized: J. Spencer Smith, directive of 2026-11-12 (Snowfell UI uplift + SF-T12 repack after the first Air rig run)"
           gh release create snowfell-test-${{ github.run_number }} Snowfell-test.zip \
             --prerelease \
             --title "Snowfell test build ${{ github.run_number }}" \

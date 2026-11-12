@@ -20,6 +20,9 @@ SOURCES = \
 	Snowfell/RoadmapViewController.m \
 	Snowfell/CommandPaletteViewController.m \
 	Snowfell/IncidentsViewController.m \
+	Snowfell/StorageViewController.m \
+	Snowfell/CloudServiceClient.m \
+	Snowfell/CloudModels.m \
 	Snowfell/SnapshotStore.m \
 	Snowfell/WriteBackQueue.m \
 	Snowfell/DispatchStore.m \
@@ -35,7 +38,8 @@ SOURCES = \
 	Snowfell/DatedItem.m \
 	Snowfell/DraftRow.m \
 	Snowfell/PaletteResult.m \
-	Snowfell/IncidentModels.m
+	Snowfell/IncidentModels.m \
+	Snowfell/AcademyTheme.m
 
 HEADERS = \
 	Snowfell/AppDelegate.h \
@@ -49,6 +53,9 @@ HEADERS = \
 	Snowfell/RoadmapViewController.h \
 	Snowfell/CommandPaletteViewController.h \
 	Snowfell/IncidentsViewController.h \
+	Snowfell/StorageViewController.h \
+	Snowfell/CloudServiceClient.h \
+	Snowfell/CloudModels.h \
 	Snowfell/SnapshotStore.h \
 	Snowfell/WriteBackQueue.h \
 	Snowfell/DispatchStore.h \
@@ -64,22 +71,33 @@ HEADERS = \
 	Snowfell/DatedItem.h \
 	Snowfell/DraftRow.h \
 	Snowfell/PaletteResult.h \
-	Snowfell/IncidentModels.h
+	Snowfell/IncidentModels.h \
+	Snowfell/AcademyTheme.h
 
 # startup-sound.wav: byte-identical to the SDS-10 library master,
 # SHA-256 07a113244c6b432b22954a089ce519bd239311b14a48f26ae85214ed8c25b09a.
-# registry.db + snapshot-manifest.json: registry snapshot v7-0038,
-# SHA-256 f5e1cb8741b1908140796f7fab5f041baf5fdd87281c003105888a4e6a186916
-# (registry content head e695fcf9116a6123b0503be853cf56a8c5223d18;
-# refreshed at SF-T8 — the sf_* domain is unchanged since changes/0031
-# (the §12 incident domain included); SnapshotSync can advance it
-# further at runtime).
+# registry.db + snapshot-manifest.json: registry snapshot v8-0041,
+# SHA-256 52df7ed66e73f0881e10b79e1ec92eef81f893257536398d2453babeee64a1e3
+# (schema 8 — includes the §12 incident domain and the SF-T12 sf_cloud_*
+# catalog projection; refreshed at the snowfell-test-2 repack from the
+# served snapshot of record; SnapshotSync can advance it further at
+# runtime).
 RESOURCES = \
 	Snowfell/Resources/startup-sound.wav \
 	Snowfell/Resources/registry.db \
 	Snowfell/Resources/snapshot-manifest.json \
 	Snowfell/Resources/LICENSE-ACADEMY.txt \
 	Snowfell/Resources/NOTICE.txt
+
+# SnowfellStorageService (SF-T12, cloud design record 03 §2.1): the
+# Storage lens's companion helper is built by StorageService/Makefile
+# from the portable-C sources in StorageService/ and copied into the
+# bundle (Contents/MacOS/, beside the app executable, where the lens's
+# pathForAuxiliaryExecutable: finds it) at PACKAGING time. It is
+# deliberately NOT part of the `app` target's compile line above — the
+# helper joins at packaging, which is SF-T8's line; source builds of
+# the app alone therefore lack it, and the V12 lens states that in its
+# service line instead of faking a Start.
 
 SDK ?= $(HOME)/workspace/tools/sdks/MacOSX10.13.sdk
 CLANG ?= clang

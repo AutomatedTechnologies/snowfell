@@ -29,13 +29,13 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>SFBuildStage</key>
-	<string>SF-T8 Distro testing build — CI-compiled from Academy source (AutomatedTechnologies/snowfell); audit + SDS-10 conformance attested by the build line on the shipped artifact 2026-11-11 (Distro files/08 rule; SDS-10 §10.5). Runtime verification is the owner's, at the Air sitting — install from the Distro listing.</string>
+	<string>snowfell-test-2 Distro testing build — UI uplift to the decision-gate HTML baseline + SF-T12 storage service/lens + registry snapshot v8-0041; CI-compiled from Academy source (AutomatedTechnologies/snowfell); audit + SDS-10 conformance attested by the build line on the shipped artifact 2026-11-12 (Distro files/08 rule; SDS-10 §10.5). Runtime verification is the owner's, at the Air sitting — install from the Distro listing.</string>
 	<key>com.detroitautomationacademy.audit</key>
 	<dict>
 		<key>Authority</key>
 		<string>Detroit Automation Academy</string>
 		<key>Date</key>
-		<string>2026-11-11</string>
+		<string>2026-11-12</string>
 		<key>Disassembled</key>
 		<true/>
 		<key>Recompiled</key>
@@ -48,7 +48,7 @@
 		<key>Authority</key>
 		<string>Detroit Automation Academy</string>
 		<key>Date</key>
-		<string>2026-11-11</string>
+		<string>2026-11-12</string>
 		<key>Logo</key>
 		<true/>
 		<key>MenuBar</key>

@@ -9,6 +9,9 @@
 #import "CommandPaletteViewController.h"
 #import "IncidentsViewController.h"
 #import "IncidentModels.h"
+#import "StorageViewController.h"
+#import "CloudServiceClient.h"
+#import "AcademyTheme.h"
 #import "BoardSummary.h"
 #import "BoardItem.h"
 #import "DatedItem.h"
@@ -39,6 +42,13 @@
 @property (nonatomic, strong) CommandPaletteViewController *paletteController;
 @property (nonatomic, strong) IncidentsViewController *incidentsController;
 @property (nonatomic, strong) NSWindow *incidentsWindow;
+@property (nonatomic, strong) StorageViewController *storageController;
+@property (nonatomic, strong) NSWindow *storageWindow;
+// SF-T12f: the Storage lens's REST client — created LAZILY by its
+// getter on first use (the client itself is stateless apart from its
+// session; the operator token is never held here or anywhere but the
+// Keychain, read by the client at call time).
+@property (nonatomic, strong, nullable) CloudServiceClient *cloudServiceClient;
 @property (nonatomic, strong) AcademyWelcomeController *welcomeController;
 // SF-T4 write-back machinery: the local queue + the (inert) GitHub
 // client. The queue opens at launch; the client is never asked to send
@@ -109,6 +119,9 @@
                                                     backing:NSBackingStoreBuffered
                                                       defer:NO];
     [self.mainWindow setTitle:@"Snowfell — Portfolio"];
+    // snowfell-test-2 uplift: the baseline window field (--win #f6f6f6)
+    // behind every lens hosted in the main window.
+    [self.mainWindow setBackgroundColor:[AcademyTheme windowColor]];
     [self.mainWindow setContentViewController:self.portfolioController];
     [self.mainWindow setMinSize:NSMakeSize(720, 420)];
     [self.mainWindow center];
@@ -264,6 +277,13 @@
                                              target:self];
     [incidentsItem setTag:208];
     [viewMenu addItem:incidentsItem];
+    // SF-T12f: the V12 Storage lens (cloud storage design record 03, §9).
+    NSMenuItem *storageItem = [self itemWithTitle:@"Storage"
+                                           action:@selector(showStorage:)
+                                    keyEquivalent:@"8"
+                                           target:self];
+    [storageItem setTag:209];
+    [viewMenu addItem:storageItem];
     [viewMenu addItem:[NSMenuItem separatorItem]];
     // SF-T7: ⌘K is an ordinary app-menu item — the app's ONLY palette
     // registration (no global hotkey, nothing outside this menu).
@@ -358,6 +378,9 @@
     if ([menuItem tag] == 207) {
         return YES;  // the palette always opens; it states its own state
     }
+    if ([menuItem tag] == 209) {
+        return YES;  // the Storage lens always opens; it states its own state (pairing / stopped / running)
+    }
     if ([menuItem tag] == 302) {
         // Checking is always safe: it is a read-only GET of the Academy's
         // own published manifest, and any swap stays behind Apply.
@@ -388,7 +411,7 @@
 
 - (IBAction)showPreferences:(id)sender {
     if (self.preferencesWindow == nil) {
-        NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 460, 412)
+        NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 460, 452)
                                                        styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                                                          backing:NSBackingStoreBuffered
                                                            defer:NO];
@@ -404,7 +427,7 @@
                             self.snapshotStore.loadError.localizedDescription];
         }
         NSTextField *snapshotField = [NSTextField labelWithString:snapshotText];
-        [snapshotField setFrame:NSMakeRect(20, 354, 420, 34)];
+        [snapshotField setFrame:NSMakeRect(20, 394, 420, 34)];
         [content addSubview:snapshotField];
 
         // V7 Sync & Settings (SF-T7 completion): three SEPARATE state
@@ -420,19 +443,19 @@
         NSTextField *tokenField = [NSTextField labelWithString:@""];
         [tokenField setTag:401];
         [[tokenField cell] setWraps:YES];
-        [tokenField setFrame:NSMakeRect(20, 306, 420, 34)];
+        [tokenField setFrame:NSMakeRect(20, 346, 420, 34)];
         [content addSubview:tokenField];
 
         NSTextField *writeBackField = [NSTextField labelWithString:@""];
         [writeBackField setTag:407];
         [[writeBackField cell] setWraps:YES];
-        [writeBackField setFrame:NSMakeRect(20, 278, 420, 22)];
+        [writeBackField setFrame:NSMakeRect(20, 318, 420, 22)];
         [content addSubview:writeBackField];
 
         NSTextField *queueField = [NSTextField labelWithString:@""];
         [queueField setTag:408];
         [[queueField cell] setWraps:YES];
-        [queueField setFrame:NSMakeRect(20, 250, 420, 22)];
+        [queueField setFrame:NSMakeRect(20, 290, 420, 22)];
         [content addSubview:queueField];
 
         // Token ENTRY cannot work in this app, by D4 design — so the
@@ -441,10 +464,10 @@
         // enable path); Snowfell only ever checks presence.
         NSTextField *tokenEntryLabel = [NSTextField labelWithString:@"GitHub token entry"];
         [tokenEntryLabel setFont:[NSFont boldSystemFontOfSize:[NSFont systemFontSize]]];
-        [tokenEntryLabel setFrame:NSMakeRect(20, 222, 420, 18)];
+        [tokenEntryLabel setFrame:NSMakeRect(20, 262, 420, 18)];
         [content addSubview:tokenEntryLabel];
 
-        NSTextField *tokenEntryField = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 194, 420, 22)];
+        NSTextField *tokenEntryField = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 234, 420, 22)];
         [tokenEntryField setTag:409];
         [tokenEntryField setFont:[NSFont systemFontOfSize:11]];
         [tokenEntryField setStringValue:@"Disabled — D4 custody: provision into the Keychain directly; Snowfell never accepts a token in-app."];
@@ -461,33 +484,33 @@
         // a timer and nothing swaps without the Apply press.
         NSTextField *syncHeader = [NSTextField labelWithString:@"Snapshot sync"];
         [syncHeader setFont:[NSFont boldSystemFontOfSize:[NSFont systemFontSize]]];
-        [syncHeader setFrame:NSMakeRect(20, 164, 420, 18)];
+        [syncHeader setFrame:NSMakeRect(20, 204, 420, 18)];
         [content addSubview:syncHeader];
 
         NSTextField *syncCurrentField = [NSTextField labelWithString:@""];
         [syncCurrentField setTag:402];
-        [syncCurrentField setFrame:NSMakeRect(20, 142, 420, 18)];
+        [syncCurrentField setFrame:NSMakeRect(20, 182, 420, 18)];
         [content addSubview:syncCurrentField];
 
         NSTextField *syncServedField = [NSTextField labelWithString:@""];
         [syncServedField setTag:403];
-        [syncServedField setFrame:NSMakeRect(20, 120, 420, 18)];
+        [syncServedField setFrame:NSMakeRect(20, 160, 420, 18)];
         [content addSubview:syncServedField];
 
         NSTextField *syncStateField = [NSTextField labelWithString:@""];
         [syncStateField setTag:404];
         [[syncStateField cell] setWraps:YES];
-        [syncStateField setFrame:NSMakeRect(20, 82, 420, 34)];
+        [syncStateField setFrame:NSMakeRect(20, 122, 420, 34)];
         [content addSubview:syncStateField];
 
-        NSButton *checkButton = [[NSButton alloc] initWithFrame:NSMakeRect(20, 20, 120, 28)];
+        NSButton *checkButton = [[NSButton alloc] initWithFrame:NSMakeRect(20, 60, 120, 28)];
         [checkButton setTitle:@"Check Now"];
         [checkButton setBezelStyle:NSBezelStyleRounded];
         [checkButton setTarget:self];
         [checkButton setAction:@selector(checkForSnapshotUpdate:)];
         [content addSubview:checkButton];
 
-        NSButton *applyButton = [[NSButton alloc] initWithFrame:NSMakeRect(150, 20, 140, 28)];
+        NSButton *applyButton = [[NSButton alloc] initWithFrame:NSMakeRect(150, 60, 140, 28)];
         [applyButton setTag:406];
         [applyButton setTitle:@"Apply Update"];
         [applyButton setBezelStyle:NSBezelStyleRounded];
@@ -495,12 +518,37 @@
         [applyButton setAction:@selector(applyStagedSnapshot:)];
         [content addSubview:applyButton];
 
-        NSButton *closeButton = [[NSButton alloc] initWithFrame:NSMakeRect(350, 20, 90, 28)];
+        NSButton *closeButton = [[NSButton alloc] initWithFrame:NSMakeRect(350, 60, 90, 28)];
         [closeButton setTitle:@"Close"];
         [closeButton setBezelStyle:NSBezelStyleRounded];
         [closeButton setTarget:self];
         [closeButton setAction:@selector(closePreferences:)];
         [content addSubview:closeButton];
+
+        // SF-T12f Cloud service port (V12 Storage): the port half of
+        // CloudServiceClient's loopback base URL — the host is pinned
+        // to 127.0.0.1 in the client and is NOT a setting. The field
+        // (tag 410) is refreshed on every Preferences open from
+        // +[CloudServiceClient configuredPort] and writes
+        // NSUserDefaults SnowfellCloudPort on commit (cloudPortChanged:);
+        // an out-of-range entry is refused and the field resets.
+        NSTextField *cloudPortLabel = [NSTextField labelWithString:@"Cloud service port (Storage):"];
+        [cloudPortLabel setFont:[NSFont boldSystemFontOfSize:[NSFont systemFontSize]]];
+        [cloudPortLabel setFrame:NSMakeRect(20, 26, 200, 18)];
+        [content addSubview:cloudPortLabel];
+
+        NSTextField *cloudPortField = [[NSTextField alloc] initWithFrame:NSMakeRect(224, 24, 64, 22)];
+        [cloudPortField setTag:410];
+        [cloudPortField setFont:[NSFont systemFontOfSize:12]];
+        [cloudPortField setTarget:self];
+        [cloudPortField setAction:@selector(cloudPortChanged:)];
+        [content addSubview:cloudPortField];
+
+        NSTextField *cloudPortHint = [NSTextField labelWithString:@"loopback only · default 8471"];
+        [cloudPortHint setFont:[NSFont systemFontOfSize:11]];
+        [cloudPortHint setTextColor:[NSColor secondaryLabelColor]];
+        [cloudPortHint setFrame:NSMakeRect(296, 26, 144, 18)];
+        [content addSubview:cloudPortHint];
 
         self.preferencesWindow = window;
     }
@@ -531,6 +579,10 @@
         : [NSString stringWithFormat:@"dispatch store unavailable (%@)",
            self.dispatchStoreError.localizedDescription];
     [queueField setStringValue:[NSString stringWithFormat:@"Local queues: %@ · %@", writeBackCount, dispatchCount]];
+    // Cloud port line: the client's own configured value (defaults
+    // key SnowfellCloudPort, default 8471) — never a cached copy.
+    NSTextField *cloudPortField = (NSTextField *)[[self.preferencesWindow contentView] viewWithTag:410];
+    [cloudPortField setIntegerValue:[CloudServiceClient configuredPort]];
     [self refreshSnapshotSyncBlock];
     [self.preferencesWindow center];
     [self.preferencesWindow makeKeyAndOrderFront:sender];
@@ -539,6 +591,22 @@
 
 - (IBAction)closePreferences:(id)sender {
     [self.preferencesWindow close];
+}
+
+// SF-T12f: commit of the Preferences Cloud service port field. Only
+// the PORT is a setting — CloudServiceClient pins the host to
+// 127.0.0.1 in code (design §9), so no preference can widen the base
+// URL. Out-of-range input is refused and the field resets to the
+// configured value.
+- (IBAction)cloudPortChanged:(id)sender {
+    NSTextField *field = (NSTextField *)sender;
+    NSInteger port = [field integerValue];
+    if (port < 1 || port > 65535) {
+        [field setIntegerValue:[CloudServiceClient configuredPort]];
+        return;
+    }
+    [[NSUserDefaults standardUserDefaults] setInteger:port forKey:CloudServicePortDefaultsKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
 #pragma mark - File menu actions
@@ -1053,6 +1121,43 @@
     [NSApp activateIgnoringOtherApps:YES];
 }
 
+#pragma mark - SF-T12f Storage (V12)
+
+// Lazy: the client is built on first use of the lens, never at launch
+// (a launch with no Storage interest pays nothing and touches neither
+// the Keychain nor the network — the client's first act is a call the
+// lens makes).
+- (CloudServiceClient *)cloudServiceClient {
+    if (_cloudServiceClient == nil) {
+        _cloudServiceClient = [[CloudServiceClient alloc] init];
+    }
+    return _cloudServiceClient;
+}
+
+- (IBAction)showStorage:(id)sender {
+    if (self.storageController == nil) {
+        self.storageController = [[StorageViewController alloc]
+                                  initWithCloudServiceClient:self.cloudServiceClient];
+    }
+    if (self.storageWindow == nil) {
+        NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1120, 680)
+                                                       styleMask:(NSWindowStyleMaskTitled |
+                                                                  NSWindowStyleMaskClosable |
+                                                                  NSWindowStyleMaskMiniaturizable |
+                                                                  NSWindowStyleMaskResizable)
+                                                         backing:NSBackingStoreBuffered
+                                                           defer:NO];
+        [window setTitle:@"Snowfell — Storage"];
+        [window setContentViewController:self.storageController];
+        [window setMinSize:NSMakeSize(1100, 680)];
+        [window center];
+        self.storageWindow = window;
+    }
+    [self.storageController reloadStorage];
+    [self.storageWindow makeKeyAndOrderFront:sender];
+    [NSApp activateIgnoringOtherApps:YES];
+}
+
 // The access-review preamble every confirm sheet carries (§3 envelope
 // form): destination + operator, transport, and the fact that in this
 // build nothing leaves the machine.
@@ -1375,7 +1480,14 @@
      @"(⌘K) searches boards, items, actions, deploy targets, and "
      @"upcoming drafts; Enter opens the hit in its view. Preferences "
      @"(V7) states the GitHub token's Keychain presence, the compiled "
-     @"write-back arm state, and both local queue counts."];
+     @"write-back arm state, and both local queue counts.\n\n"
+     @"Storage (SF-T12): View ▸ Storage (⌘8) is the operator console "
+     @"for the bundled SnowfellStorageService — tenants, logins, "
+     @"buckets, and the audit trail, all over the service's REST API "
+     @"on 127.0.0.1 only (the port is a Preferences setting; the host "
+     @"never is). The lens starts/stops the bundled helper and pairs "
+     @"the operator token into the Keychain on first use; without a "
+     @"token it shows the pairing pane instead of data."];
     [alert beginSheetModalForWindow:self.mainWindow completionHandler:nil];
 }
 
