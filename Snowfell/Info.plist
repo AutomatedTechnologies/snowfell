@@ -29,7 +29,7 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>SFBuildStage</key>
-	<string>snowfell-test-2 Distro testing build — UI uplift to the decision-gate HTML baseline + SF-T12 storage service/lens + registry snapshot v8-0041; CI-compiled from Academy source (AutomatedTechnologies/snowfell); audit + SDS-10 conformance attested by the build line on the shipped artifact 2026-11-12 (Distro files/08 rule; SDS-10 §10.5). Runtime verification is the owner's, at the Air sitting — install from the Distro listing.</string>
+	<string>snowfell-test-3 Distro testing build — owner-verdict declutter: staging/push language on all write-back, orchestration, and incident confirmations with the technical record behind Details; Incidents header in plain terms and its truncation fixed; menu labels follow window/pane state. Carries the test-2 line unchanged otherwise (UI uplift to the decision-gate HTML baseline + SF-T12 storage service/lens + registry snapshot v8-0041 + board-state derivation presentation); CI-compiled from Academy source (AutomatedTechnologies/snowfell); audit + SDS-10 conformance attested by the build line on the shipped artifact 2026-11-12 (Distro files/08 rule; SDS-10 §10.5). Runtime verification is the owner's, at the Air sitting — install from the Distro listing.</string>
 	<key>com.detroitautomationacademy.audit</key>
 	<dict>
 		<key>Authority</key>

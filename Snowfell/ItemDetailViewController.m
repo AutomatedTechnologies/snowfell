@@ -94,7 +94,7 @@
     // WriteBackQueue (after the AppDelegate confirm sheet). It posts
     // nothing; sending is a separate, armed action (see the Queue panel).
     NSTextField *commentLabel = [NSTextField labelWithString:
-        @"Add a comment — queued locally in this build; posted only by an armed Send"];
+        @"Add a comment — staged on this Mac; posted only when you send staged changes"];
     [commentLabel setFont:[NSFont boldSystemFontOfSize:12]];
     [commentLabel setFrame:NSMakeRect(16, 48, 728, 18)];
     [commentLabel setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
@@ -107,7 +107,7 @@
     [root addSubview:_commentField];
 
     _commentButton = [[NSButton alloc] initWithFrame:NSMakeRect(568, 10, 176, 30)];
-    [_commentButton setTitle:@"Enqueue Comment"];
+    [_commentButton setTitle:@"Stage Comment"];
     [_commentButton setBezelStyle:NSBezelStyleRounded];
     [_commentButton setTarget:self];
     [_commentButton setAction:@selector(enqueueCommentClicked:)];

@@ -55,11 +55,11 @@
     [_table setAllowsMultipleSelection:NO];
 
     NSArray<NSArray *> *columns = @[
-        @[@"kind", @"Kind", @110],
+        @[@"kind", @"Change", @110],
         @[@"target", @"Target", @330],
         @[@"state", @"State", @70],
         @[@"attempts", @"Attempts", @60],
-        @[@"created", @"Queued", @150],
+        @[@"created", @"Staged", @150],
         @[@"error", @"Last error", @220],
     ];
     for (NSArray *spec in columns) {
@@ -79,7 +79,7 @@
     [root addSubview:refreshButton];
 
     _sendButton = [[NSButton alloc] initWithFrame:NSMakeRect(860 - 196, 12, 180, 28)];
-    [_sendButton setTitle:@"Send Pending…"];
+    [_sendButton setTitle:@"Send Pending Changes…"];
     [_sendButton setBezelStyle:NSBezelStyleRounded];
     [_sendButton setTarget:self];
     [_sendButton setAction:@selector(sendClicked:)];
@@ -109,23 +109,23 @@
     NSInteger pending = (self.queue != nil) ? [self.queue pendingCount] : 0;
 
     [_armField setStringValue:[NSString stringWithFormat:
-                               @"Write-back queue — %lu mutation(s), %ld pending · compiled %@ · token %@",
+                               @"Staged changes — %lu total, %ld waiting to send · sending %@ in this build%@",
                                (unsigned long)[self.rows count], (long)pending,
                                compiled ? @"ON" : @"OFF",
-                               (tokenStatus == GitHubTokenStatusAvailable) ? @"configured" : @"not configured"]];
+                               (tokenStatus == GitHubTokenStatusAvailable) ? @"" : @" · no GitHub token stored"]];
 
     NSMutableArray<NSString *> *reasons = [NSMutableArray array];
     if (!compiled) {
-        [reasons addObject:@"Sending is disabled because write-back is compiled OFF in this build (SNOWFELL_WRITEBACK_ENABLED = 0): the queue is local-only, and no network call can be made."];
+        [reasons addObject:@"Sending is off in this build, so staged changes stay on this Mac and no network call can be made. Each row's tooltip carries the full record: what will be sent, where, and by what mechanism."];
     }
     if (tokenStatus != GitHubTokenStatusAvailable) {
-        [reasons addObject:@"No GitHub token is configured in the macOS Keychain (service com.detroitautomationacademy.snowfell.github) — D4 custody; the token is never stored in the app or its databases."];
+        [reasons addObject:@"No GitHub token is stored in your macOS Keychain, so there is nothing to send with yet."];
     }
     if (pending == 0) {
-        [reasons addObject:@"Nothing is pending."];
+        [reasons addObject:@"Nothing is waiting to send."];
     }
     if ([reasons count] == 0) {
-        [reasons addObject:@"Armed: Send Pending runs one attempt per pending row, FIFO, and records each outcome here and in the local audit log."];
+        [reasons addObject:@"Ready: Send Pending Changes sends each waiting change once, in the order staged, and records the outcome here."];
     }
     [_reasonField setStringValue:[reasons componentsJoinedByString:@" "]];
     [_sendButton setEnabled:(compiled && tokenStatus == GitHubTokenStatusAvailable && pending > 0)];
@@ -151,12 +151,34 @@
     WriteBackMutation *mutation = self.rows[(NSUInteger)row];
     NSString *identifier = [tableColumn identifier];
     if ([identifier isEqualToString:@"kind"]) {
+        // User terms in the list; the raw kind stays in the tooltip.
+        if ([mutation.kind isEqualToString:@"status_move"]) {
+            return @"Status change";
+        }
+        if ([mutation.kind isEqualToString:@"create_item"]) {
+            return @"New item";
+        }
+        if ([mutation.kind isEqualToString:@"comment"]) {
+            return @"Comment";
+        }
         return mutation.kind;
     }
     if ([identifier isEqualToString:@"target"]) {
         return mutation.targetSummary;
     }
     if ([identifier isEqualToString:@"state"]) {
+        if ([mutation.state isEqualToString:@"pending"]) {
+            return @"Waiting";
+        }
+        if ([mutation.state isEqualToString:@"sending"]) {
+            return @"Sending…";
+        }
+        if ([mutation.state isEqualToString:@"sent"]) {
+            return @"Sent";
+        }
+        if ([mutation.state isEqualToString:@"failed"]) {
+            return @"Failed";
+        }
         return mutation.state;
     }
     if ([identifier isEqualToString:@"attempts"]) {
@@ -175,8 +197,9 @@
 
 - (NSString *)tableView:(NSTableView *)tableView toolTipForCell:(NSCell *)cell rect:(NSRectPointer)rect tableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row mouseLocation:(NSPoint)mouseLocation {
     WriteBackMutation *mutation = self.rows[(NSUInteger)row];
-    return [NSString stringWithFormat:@"#%lld · %@\nboard %@\n%@",
-            mutation.queueID, mutation.kind, mutation.boardID, mutation.payloadJSON];
+    return [NSString stringWithFormat:@"#%lld · %@\nboard %@\n%@\nDestination when sent: %@ (GitHub GraphQL API, over HTTPS)",
+            mutation.queueID, mutation.kind, mutation.boardID, mutation.payloadJSON,
+            [GitHubProjectsClient graphQLEndpoint]];
 }
 
 @end

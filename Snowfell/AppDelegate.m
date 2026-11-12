@@ -192,7 +192,7 @@
                                         target:self];
     [syncItem setTag:302];
     [fileMenu addItem:syncItem];
-    NSMenuItem *sendItem = [self itemWithTitle:@"Send Pending Mutations…"
+    NSMenuItem *sendItem = [self itemWithTitle:@"Send Pending Changes…"
                                         action:@selector(sendPendingMutations:)
                                  keyEquivalent:@""
                                         target:self];
@@ -252,7 +252,7 @@
                                           target:self];
     [detailItem setTag:203];
     [viewMenu addItem:detailItem];
-    NSMenuItem *queueItem = [self itemWithTitle:@"Write-back Queue"
+    NSMenuItem *queueItem = [self itemWithTitle:@"Staged Changes"
                                          action:@selector(showWriteBackQueue:)
                                   keyEquivalent:@"4"
                                          target:self];
@@ -299,6 +299,7 @@
                                        keyEquivalent:@"f"
                                               target:self];
     [fullScreenItem setKeyEquivalentModifierMask:NSEventModifierFlagControl | NSEventModifierFlagCommand];
+    [fullScreenItem setTag:210];
     [viewMenu addItem:fullScreenItem];
     NSMenuItem *viewMenuItem = [[NSMenuItem alloc] init];
     [viewMenuItem setTitle:@"View"];
@@ -349,11 +350,24 @@
 
 - (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
     if ([menuItem tag] == 101) {
-        [menuItem setState:self.portfolioController.showClosedBoards ? NSControlStateValueOn : NSControlStateValueOff];
+        // Title follows state at menu-open time (the AppKit tab-bar
+        // pattern): the label must agree with what the click will do.
+        [menuItem setTitle:self.portfolioController.showClosedBoards ? @"Hide Closed Boards" : @"Show Closed Boards"];
         return YES;
     }
     if ([menuItem tag] == 102) {
-        [menuItem setState:self.portfolioController.showArchivedBoards ? NSControlStateValueOn : NSControlStateValueOff];
+        [menuItem setTitle:self.portfolioController.showArchivedBoards ? @"Hide Archived Boards" : @"Show Archived Boards"];
+        return YES;
+    }
+    if ([menuItem tag] == 210) {
+        // The Full Screen label follows the state of the very window
+        // the action toggles ([NSApp keyWindow], as in toggleFullScreen:).
+        NSWindow *target = [NSApp keyWindow];
+        if (target == nil) {
+            target = self.mainWindow;
+        }
+        BOOL fullScreen = (target != nil) && ((target.styleMask & NSWindowStyleMaskFullScreen) != 0);
+        [menuItem setTitle:fullScreen ? @"Exit Full Screen" : @"Enter Full Screen"];
         return YES;
     }
     if ([menuItem tag] == 202) {
@@ -558,27 +572,27 @@
     NSTextField *tokenField = (NSTextField *)[[self.preferencesWindow contentView] viewWithTag:401];
     BOOL tokenPresent = ([self.githubClient tokenStatus] == GitHubTokenStatusAvailable);
     [tokenField setStringValue:[NSString stringWithFormat:
-                                @"GitHub token: %@ (Keychain service %@ — presence checked only; the secret is never read or shown).",
-                                tokenPresent ? @"token present in Keychain" : @"no token stored",
+                                @"GitHub token: %@ — kept in your macOS Keychain (service %@). Snowfell checks only that it is there; the secret is never read or shown.",
+                                tokenPresent ? @"stored" : @"not stored",
                                 GitHubProjectsKeychainService]];
     // Flag line: the compiled lock, stated as it is in THIS build.
     NSTextField *writeBackField = (NSTextField *)[[self.preferencesWindow contentView] viewWithTag:407];
     if ([GitHubProjectsClient writeBackCompiledEnabled]) {
-        [writeBackField setStringValue:@"Write-back: ENABLED in this build (SNOWFELL_WRITEBACK_ENABLED = 1) — sending still requires the token and your explicit Send Pending action."];
+        [writeBackField setStringValue:@"Sending: ON in this build — staged changes leave this Mac only with your Keychain token and your explicit Send Pending Changes action."];
     } else {
-        [writeBackField setStringValue:@"Write-back: DISABLED in this build (SNOWFELL_WRITEBACK_ENABLED = 0) — no mutation can be sent from this build."];
+        [writeBackField setStringValue:@"Sending: OFF in this build — changes can be staged on this Mac but not sent from here."];
     }
     // Queue line: both local stores' waiting counts (or their failure).
     NSTextField *queueField = (NSTextField *)[[self.preferencesWindow contentView] viewWithTag:408];
     NSString *writeBackCount = (self.writeBackQueue != nil)
-        ? [NSString stringWithFormat:@"%ld write-back(s) pending", (long)[self.writeBackQueue pendingCount]]
+        ? [NSString stringWithFormat:@"%ld staged change(s) waiting", (long)[self.writeBackQueue pendingCount]]
         : [NSString stringWithFormat:@"write-back queue unavailable (%@)",
            self.writeBackQueueError.localizedDescription];
     NSString *dispatchCount = (self.dispatchStore != nil)
-        ? [NSString stringWithFormat:@"%ld estate dispatch(es) queued", (long)[self.dispatchStore queuedCount]]
+        ? [NSString stringWithFormat:@"%ld action(s) queued", (long)[self.dispatchStore queuedCount]]
         : [NSString stringWithFormat:@"dispatch store unavailable (%@)",
            self.dispatchStoreError.localizedDescription];
-    [queueField setStringValue:[NSString stringWithFormat:@"Local queues: %@ · %@", writeBackCount, dispatchCount]];
+    [queueField setStringValue:[NSString stringWithFormat:@"On this Mac: %@ · %@", writeBackCount, dispatchCount]];
     // Cloud port line: the client's own configured value (defaults
     // key SnowfellCloudPort, default 8471) — never a cached copy.
     NSTextField *cloudPortField = (NSTextField *)[[self.preferencesWindow contentView] viewWithTag:410];
@@ -952,7 +966,7 @@
                                                                   NSWindowStyleMaskResizable)
                                                          backing:NSBackingStoreBuffered
                                                            defer:NO];
-        [window setTitle:@"Snowfell — Write-back Queue"];
+        [window setTitle:@"Snowfell — Staged Changes"];
         [window setContentViewController:self.queueController];
         [window setMinSize:NSMakeSize(700, 380)];
         [window center];
@@ -1158,30 +1172,71 @@
     [NSApp activateIgnoringOtherApps:YES];
 }
 
-// The access-review preamble every confirm sheet carries (§3 envelope
-// form): destination + operator, transport, and the fact that in this
-// build nothing leaves the machine.
+// The primary line every staging confirm carries, in the owner's
+// terms (owner verdict 2026-11-12): the action, the staging, and the
+// push model. Mechanism lives behind the sheet's Details button.
 - (NSString *)writeBackConfirmPreamble {
+    return @"The change is staged in Snowfell's queue on this Mac — nothing has been sent. "
+           @"It leaves this Mac only when you choose Send Pending Changes.";
+}
+
+// The full record, behind the confirm sheet's Details button: exact
+// effect (mutation name included), destination, transport, staging
+// store, and the send locks — auditability without primary-surface
+// clutter.
+- (NSString *)writeBackConfirmDetailsForEffect:(NSString *)effect {
     return [NSString stringWithFormat:
-            @"Destination when sent: %@ (GitHub GraphQL API, operator GitHub) over HTTPS.\n"
-            @"Nothing has been sent. Confirming records the mutation in the LOCAL write-back queue only "
-            @"(%@); it leaves this Mac solely through the owner's explicit Send Pending action in an armed build.",
-            [GitHubProjectsClient graphQLEndpoint],
-            [WriteBackQueue defaultStorePath]];
+            @"Effect when sent: %@\n\n"
+            @"Destination: %@ (GitHub GraphQL API; operator: GitHub), over HTTPS.\n"
+            @"Staging store: the local write-back queue at %@ — the change waits there, on this Mac only, until sent.\n"
+            @"Sending requires an armed build (SNOWFELL_WRITEBACK_ENABLED = 1), a GitHub token in the macOS Keychain, and your explicit Send Pending Changes action. Sending is compiled OFF in this build, so a staged change will wait in the queue.",
+            effect, [GitHubProjectsClient graphQLEndpoint], [WriteBackQueue defaultStorePath]];
 }
 
 - (void)confirmEnqueueOnWindow:(NSWindow *)window
                    messageText:(NSString *)messageText
               informativeText:(NSString *)informativeText
+                  detailsText:(NSString *)detailsText
+              stageButtonTitle:(NSString *)stageButtonTitle
                     completion:(void (^)(BOOL confirmed))completion {
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:messageText];
     [alert setInformativeText:informativeText];
-    [alert addButtonWithTitle:@"Enqueue Locally"];
+    [alert addButtonWithTitle:stageButtonTitle];
     [alert addButtonWithTitle:@"Cancel"];
+    if (detailsText != nil) {
+        [alert addButtonWithTitle:@"Details…"];
+    }
     NSWindow *sheetWindow = (window != nil) ? window : self.mainWindow;
     [alert beginSheetModalForWindow:sheetWindow completionHandler:^(NSModalResponse result) {
-        completion(result == NSAlertFirstButtonReturn);
+        if (result == NSAlertFirstButtonReturn) {
+            completion(YES);
+            return;
+        }
+        if (result == NSAlertThirdButtonReturn && detailsText != nil) {
+            // Progressive disclosure: the full technical record, then
+            // Back returns to this same confirm — nothing is staged
+            // by looking.
+            NSAlert *details = [[NSAlert alloc] init];
+            [details setMessageText:@"Details"];
+            [details setInformativeText:detailsText];
+            [details addButtonWithTitle:@"Back"];
+            [details addButtonWithTitle:@"Cancel"];
+            [details beginSheetModalForWindow:sheetWindow completionHandler:^(NSModalResponse back) {
+                if (back == NSAlertFirstButtonReturn) {
+                    [self confirmEnqueueOnWindow:window
+                                     messageText:messageText
+                                informativeText:informativeText
+                                    detailsText:detailsText
+                               stageButtonTitle:stageButtonTitle
+                                      completion:completion];
+                } else {
+                    completion(NO);
+                }
+            }];
+            return;
+        }
+        completion(NO);
     }];
 }
 
@@ -1194,9 +1249,9 @@
          sheetWindow:(NSWindow *)window {
     if (self.writeBackQueue == nil) {
         NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText:@"Write-back queue unavailable"];
+        [alert setMessageText:@"Staged-changes queue unavailable"];
         [alert setInformativeText:[NSString stringWithFormat:
-                                   @"The local queue could not be opened: %@\nNothing was queued.",
+                                   @"The local queue could not be opened: %@\nNothing was staged.",
                                    self.writeBackQueueError.localizedDescription]];
         [alert beginSheetModalForWindow:(window != nil) ? window : self.mainWindow completionHandler:nil];
         return NO;
@@ -1209,9 +1264,9 @@
                                                              error:&error];
     if (queueID < 0) {
         NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText:@"Mutation not queued"];
+        [alert setMessageText:@"Change not staged"];
         [alert setInformativeText:[NSString stringWithFormat:
-                                   @"%@\nNothing was queued and nothing was sent.",
+                                   @"%@\nNothing was staged and nothing was sent.",
                                    (error != nil) ? error.localizedDescription : @"unknown error"]];
         [alert beginSheetModalForWindow:(window != nil) ? window : self.mainWindow completionHandler:nil];
         return NO;
@@ -1229,21 +1284,25 @@
     StatusOptionRef *option = [statusField optionWithName:optionName];
     if (statusField == nil || option == nil) {
         NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText:@"Status move not queued"];
+        [alert setMessageText:@"Status change not staged"];
         [alert setInformativeText:[NSString stringWithFormat:
-                                   @"The snapshot carries no Status field/option IDs for this board (%@). Nothing was queued.",
+                                   @"The snapshot has no status choices recorded for this board (%@). Nothing was staged.",
                                    (error != nil) ? error.localizedDescription : @"option not found"]];
         [alert beginSheetModalForWindow:self.boardWindow completionHandler:nil];
         completion(NO);
         return;
     }
     NSString *effect = [NSString stringWithFormat:
-                        @"Effect when eventually sent: updateProjectV2ItemFieldValue will set the Status of “%@” on board “%@” from “%@” to “%@”.",
+                        @"updateProjectV2ItemFieldValue will set the Status of “%@” on board “%@” from “%@” to “%@”.",
                         item.title, board.title,
                         (item.statusName != nil) ? item.statusName : @"(no status)", optionName];
     [self confirmEnqueueOnWindow:self.boardWindow
-                     messageText:@"Queue status move?"
-                informativeText:[NSString stringWithFormat:@"%@\n\n%@", effect, [self writeBackConfirmPreamble]]
+                     messageText:[NSString stringWithFormat:@"Move “%@” to %@ on %@?", item.title, optionName, board.title]
+                informativeText:[NSString stringWithFormat:@"Status changes from “%@” to “%@”.\n\n%@",
+                                 (item.statusName != nil) ? item.statusName : @"(no status)", optionName,
+                                 [self writeBackConfirmPreamble]]
+                    detailsText:[self writeBackConfirmDetailsForEffect:effect]
+               stageButtonTitle:@"Stage Move"
                       completion:^(BOOL confirmed) {
         if (!confirmed) {
             completion(NO);
@@ -1282,11 +1341,16 @@
         }
     }
     NSString *effect = [NSString stringWithFormat:
-                        @"Effect when eventually sent: addProjectV2DraftIssue will create a draft issue titled “%@” on board “%@”.%@",
+                        @"addProjectV2DraftIssue will create a draft issue titled “%@” on board “%@”.%@",
                         title, board.title, statusClause];
+    NSString *plainClause = (optionName != nil)
+        ? [NSString stringWithFormat:@"A new draft item with Status “%@”.", optionName]
+        : @"A new draft item.";
     [self confirmEnqueueOnWindow:self.boardWindow
-                     messageText:@"Queue new item?"
-                informativeText:[NSString stringWithFormat:@"%@\n\n%@", effect, [self writeBackConfirmPreamble]]
+                     messageText:[NSString stringWithFormat:@"Add “%@” to %@?", title, board.title]
+                informativeText:[NSString stringWithFormat:@"%@\n\n%@", plainClause, [self writeBackConfirmPreamble]]
+                    detailsText:[self writeBackConfirmDetailsForEffect:effect]
+               stageButtonTitle:@"Stage Item"
                       completion:^(BOOL confirmed) {
         if (!confirmed) {
             return;
@@ -1303,14 +1367,16 @@
                                body:(NSString *)body
                          completion:(void (^)(BOOL enqueued))completion {
     NSMutableString *effect = [NSMutableString stringWithFormat:
-                               @"Effect when eventually sent: addComment will post this comment to %@ (“%@”):\n\n%@",
+                               @"addComment will post this comment to %@ (“%@”):\n\n%@",
                                item.kindDisplay, item.title, body];
     if ([item.contentKind isEqualToString:@"DraftIssue"]) {
         [effect appendString:@"\n\nNote: GitHub offers NO comment mutation for draft issues — when a send is attempted this row will fail with that reason, on the record. (A draft's body is edited instead; that operation is outside write-back v1.)"];
     }
     [self confirmEnqueueOnWindow:self.detailWindow
-                     messageText:@"Queue comment?"
-                informativeText:[NSString stringWithFormat:@"%@\n\n%@", effect, [self writeBackConfirmPreamble]]
+                     messageText:[NSString stringWithFormat:@"Comment on “%@”?", item.title]
+                informativeText:[NSString stringWithFormat:@"%@\n\n%@", body, [self writeBackConfirmPreamble]]
+                    detailsText:[self writeBackConfirmDetailsForEffect:effect]
+               stageButtonTitle:@"Stage Comment"
                       completion:^(BOOL confirmed) {
         if (!confirmed) {
             completion(NO);
@@ -1338,8 +1404,8 @@
 - (IBAction)sendPendingMutations:(id)sender {
     if (![GitHubProjectsClient writeBackCompiledEnabled]) {
         NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText:@"Write-back is compiled OFF in this build"];
-        [alert setInformativeText:@"SNOWFELL_WRITEBACK_ENABLED = 0: no mutation can be sent from this build, whatever the Keychain holds. The queue is unchanged and stays pending for an armed rig build (see the app README's enable path)."];
+        [alert setMessageText:@"Sending is off in this build"];
+        [alert setInformativeText:@"This build can stage changes but cannot send them, whatever the Keychain holds. Staged changes stay in the queue on this Mac, unchanged, until an armed build sends them."];
         [alert beginSheetModalForWindow:(self.queueWindow != nil && [self.queueWindow isVisible]) ? self.queueWindow : self.mainWindow
                       completionHandler:nil];
         [self.queueController reloadQueue];
@@ -1347,8 +1413,8 @@
     }
     if ([self.githubClient tokenStatus] != GitHubTokenStatusAvailable) {
         NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText:@"No GitHub token configured"];
-        [alert setInformativeText:@"D4 custody: the token lives only in the macOS Keychain (service com.detroitautomationacademy.snowfell.github). Without it the client reports notConfigured and the queue stays pending. Nothing was sent."];
+        [alert setMessageText:@"No GitHub token for sending"];
+        [alert setInformativeText:@"Sending uses a GitHub token kept in your macOS Keychain. None is stored, so nothing was sent and the staged changes stay in the queue."];
         [alert beginSheetModalForWindow:self.mainWindow completionHandler:nil];
         return;
     }
@@ -1453,22 +1519,22 @@
      @"Snowfell is the Academy's board over GitHub Projects, read from a "
      @"pinned, hash-verified registry snapshot.\n\n"
      @"Double-click a Portfolio row to open its board; click a card to "
-     @"open the item. Status columns are each board's own vocabulary — "
-     @"Snowfell stores status as data, never as a fixed enum.\n\n"
-     @"Write-back (SF-T4): a card's Status popup, the Board's New Item "
-     @"button, and Item Detail's comment field QUEUE mutations locally "
-     @"(View ▸ Write-back Queue, ⌘4) after a confirm sheet naming the "
-     @"exact GitHub effect. Sending is compiled OFF in this build and "
-     @"additionally requires a Keychain token and the owner's explicit "
-     @"Send Pending action — nothing leaves this Mac from the queue "
-     @"here.\n\n"
-     @"Orchestration (SF-T5): View ▸ Orchestration Center (⌘5) composes "
-     @"any manifest action (sf_actions — actions are data) into a local "
-     @"queue after an access-review confirm sheet. Estate-lane rows wait "
-     @"in local_dispatches for Minion/hooks to execute (SF-T6); the one "
-     @"GitHub-lane mapping this build carries (gh.project.move_item) "
-     @"lands in the SF-T4 write-back queue instead. This app executes "
-     @"nothing from either queue.\n\n"
+     @"open the item. Each board uses its own status names.\n\n"
+     @"Staging changes: a card's Status popup, the Board's New Item "
+     @"button, and Item Detail's comment field stage changes in a "
+     @"queue on this Mac (View ▸ Staged Changes, ⌘4) after a "
+     @"confirmation that names the change in plain terms — the "
+     @"sheet's Details button shows the exact GitHub operation for "
+     @"the record. Sending is off in this build; in an armed build "
+     @"it additionally requires your Keychain GitHub token and your "
+     @"explicit Send Pending Changes action. Nothing leaves this "
+     @"Mac from the queue here.\n\n"
+     @"Orchestration: View ▸ Orchestration Center (⌘5) stages any "
+     @"action from the snapshot's action list into a queue on this "
+     @"Mac after a confirmation. Queued actions wait for Minion to "
+     @"carry them out after approval; a GitHub status move staged "
+     @"there lands in the same staged-changes queue as the Board's. "
+     @"This app executes nothing from either queue itself.\n\n"
      @"Snapshot sync (SF-T6): File ▸ Check for Snapshot Update… fetches "
      @"the Academy's published snapshot manifest; a newer snapshot is "
      @"downloaded and hash-verified into staging, and swaps in only "
@@ -1479,8 +1545,8 @@
      @"dates the snapshot actually holds. View ▸ Command Palette… "
      @"(⌘K) searches boards, items, actions, deploy targets, and "
      @"upcoming drafts; Enter opens the hit in its view. Preferences "
-     @"(V7) states the GitHub token's Keychain presence, the compiled "
-     @"write-back arm state, and both local queue counts.\n\n"
+     @"(V7) states the GitHub token's Keychain presence, whether "
+     @"sending is on in this build, and both local queue counts.\n\n"
      @"Storage (SF-T12): View ▸ Storage (⌘8) is the operator console "
      @"for the bundled SnowfellStorageService — tenants, logins, "
      @"buckets, and the audit trail, all over the service's REST API "

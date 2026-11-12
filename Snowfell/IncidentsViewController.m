@@ -99,10 +99,10 @@ static NSString * const IncidentsActionWatchArm    = @"incident.watch.arm";
 
     // Left: the queue.
     _queueTable = [[NSTableView alloc] initWithFrame:NSMakeRect(0, 0, 400, 560)];
-    [self columnWithIdentifier:@"key" title:@"Incident" width:170 inTable:_queueTable];
-    [self columnWithIdentifier:@"severity" title:@"Severity" width:70 inTable:_queueTable];
-    [self columnWithIdentifier:@"state" title:@"State" width:70 inTable:_queueTable];
-    [self columnWithIdentifier:@"deadline" title:@"Next deadline" width:86 inTable:_queueTable];
+    [self columnWithIdentifier:@"key" title:@"Incident" width:150 inTable:_queueTable];
+    [self columnWithIdentifier:@"severity" title:@"Severity" width:74 inTable:_queueTable];
+    [self columnWithIdentifier:@"state" title:@"State" width:96 inTable:_queueTable];
+    [self columnWithIdentifier:@"deadline" title:@"Next deadline" width:76 inTable:_queueTable];
     [_queueTable setDataSource:self];
     [_queueTable setDelegate:self];
     [_queueTable setAllowsMultipleSelection:NO];
@@ -172,10 +172,10 @@ static NSString * const IncidentsActionWatchArm    = @"incident.watch.arm";
     [detail addSubview:_deadlineHeaderField];
 
     _deadlineTable = [[NSTableView alloc] initWithFrame:NSMakeRect(0, 0, 616, 110)];
-    [self columnWithIdentifier:@"due" title:@"Due" width:150 inTable:_deadlineTable];
-    [self columnWithIdentifier:@"kind" title:@"Kind" width:110 inTable:_deadlineTable];
-    [self columnWithIdentifier:@"dstate" title:@"State" width:80 inTable:_deadlineTable];
-    [self columnWithIdentifier:@"label" title:@"Label" width:272 inTable:_deadlineTable];
+    [self columnWithIdentifier:@"due" title:@"Due" width:130 inTable:_deadlineTable];
+    [self columnWithIdentifier:@"kind" title:@"Kind" width:96 inTable:_deadlineTable];
+    [self columnWithIdentifier:@"dstate" title:@"State" width:110 inTable:_deadlineTable];
+    [self columnWithIdentifier:@"label" title:@"Label" width:276 inTable:_deadlineTable];
     [_deadlineTable setDataSource:self];
     [_deadlineTable setDelegate:self];
     [_deadlineTable setAllowsMultipleSelection:NO];
@@ -194,10 +194,10 @@ static NSString * const IncidentsActionWatchArm    = @"incident.watch.arm";
     [detail addSubview:_assetHeaderField];
 
     _assetTable = [[NSTableView alloc] initWithFrame:NSMakeRect(0, 0, 616, 150)];
-    [self columnWithIdentifier:@"atype" title:@"Type" width:110 inTable:_assetTable];
-    [self columnWithIdentifier:@"alabel" title:@"Label" width:220 inTable:_assetTable];
-    [self columnWithIdentifier:@"aref" title:@"Ref (message / path)" width:170 inTable:_assetTable];
-    [self columnWithIdentifier:@"asha" title:@"SHA-256" width:112 inTable:_assetTable];
+    [self columnWithIdentifier:@"atype" title:@"Type" width:100 inTable:_assetTable];
+    [self columnWithIdentifier:@"alabel" title:@"Label" width:252 inTable:_assetTable];
+    [self columnWithIdentifier:@"aref" title:@"Ref (message / path)" width:150 inTable:_assetTable];
+    [self columnWithIdentifier:@"asha" title:@"SHA-256" width:110 inTable:_assetTable];
     [_assetTable setDataSource:self];
     [_assetTable setDelegate:self];
     [_assetTable setAllowsMultipleSelection:NO];
@@ -276,11 +276,11 @@ static NSString * const IncidentsActionWatchArm    = @"incident.watch.arm";
         [_headerField setStringValue:@"Incidents — none on the record"];
         if ([self manifestActionWithID:IncidentsActionSend] != nil) {
             [_subheaderField setStringValue:
-             @"The snapshot carries the incident domain (design §12) but no incident is recorded in it yet. "
-             @"Incidents arrive through the §12.2/§12.3 ingestion lanes; the queue stays empty — never invented."];
+             @"No incident is recorded in this snapshot yet. Incidents arrive from your mail and watches; "
+             @"the list is never padded."];
         } else {
             [_subheaderField setStringValue:[NSString stringWithFormat:
-             @"This snapshot (%@) predates the incident domain (registry changes/0031). "
+             @"This snapshot (%@) predates the incident record. "
              @"Update the snapshot (Sync ▸ Check for Snapshot Update, or Distro) and the lens fills from the record.",
              (self.snapshotVersion != nil) ? self.snapshotVersion : @"unknown version"]];
         }
@@ -298,9 +298,7 @@ static NSString * const IncidentsActionWatchArm    = @"incident.watch.arm";
         @"Incidents — %lu on the record, %lu not closed",
         (unsigned long)[summaries count], (unsigned long)openCount]];
     [_subheaderField setStringValue:
-     @"Queue order: next open deadline first (design §12.5). State and severity names are the snapshot's "
-     @"own vocabulary rows — the app carries no incident status enum. Buttons enqueue §12.2 actions in the "
-     @"local dispatch store; sending stays owner-gated (incident.email.send remains queued until approved)."];
+     @"Next open deadline first. Actions are staged on this Mac — nothing is sent without your approval."];
     [self selectIncidentAtRow:([_queueTable selectedRow] >= 0 ? [_queueTable selectedRow] : 0)];
 }
 
@@ -481,18 +479,36 @@ objectValueForTableColumn:(NSTableColumn *)tableColumn
     }
     SFAction *action = [self manifestActionWithID:actionID];
     if (action == nil || !action.enabled) {
-        [_statusField setStringValue:[NSString stringWithFormat:
-            @"%@ is not an enabled action in this snapshot's manifest; nothing was queued.", actionID]];
+        [_statusField setStringValue:(action != nil)
+            ? [NSString stringWithFormat:@"%@ is not available in this snapshot; nothing was staged.", action.name]
+            : @"That action is not in this snapshot's action list; nothing was staged."];
         return;
     }
     if (self.dispatchStore == nil) {
-        [_statusField setStringValue:@"The local dispatch store is unavailable in this session; nothing was queued."];
+        [_statusField setStringValue:@"The action queue is unavailable in this session; nothing was staged."];
         return;
     }
 
-    NSAlert *alert = [[NSAlert alloc] init];
-    [alert setMessageText:[NSString stringWithFormat:@"Queue %@ — %@?", action.name, incident.key]];
-    NSMutableString *info = [NSMutableString stringWithFormat:
+    // Primary copy in the owner's terms (verdict 2026-11-12): the
+    // action named plainly, and the one safety fact that matters —
+    // staging sends nothing; the email send in particular stays
+    // queued until the owner approves it. The full record (action id,
+    // lane, store, payload, destination) sits behind Details.
+    NSString *plainEffect = nil;
+    if ([actionID isEqualToString:IncidentsActionSend]) {
+        plainEffect = @"An email about this incident is staged for your approval. It stays in the queue until you approve it — staging sends nothing, and no email leaves any account.";
+    } else if ([actionID isEqualToString:IncidentsActionPhone]) {
+        plainEffect = @"A call about this incident is staged for your approval. The call is placed only after approval — never by this app.";
+    } else if ([actionID isEqualToString:IncidentsActionComplaint]) {
+        plainEffect = @"A complaint filing is staged for your approval, prepared from this incident's evidence on the record. Staging files nothing.";
+    } else if ([actionID isEqualToString:IncidentsActionWatchArm]) {
+        plainEffect = @"A watch on this incident's deadlines and counterparty is staged for your approval. Staging arms nothing.";
+    } else if ([actionID isEqualToString:IncidentsActionDraftReply]) {
+        plainEffect = @"A reply draft is staged for preparation. Nothing is sent.";
+    } else {
+        plainEffect = @"This action is staged in the queue on this Mac. Nothing runs and nothing is sent by staging.";
+    }
+    NSMutableString *details = [NSMutableString stringWithFormat:
         @"Action: %@ (%@)\n"
         @"Lane: ESTATE QUEUE. Confirming records a row in the local dispatch store (%@, table "
         @"local_dispatches) in state “queued”, with payload {\"incident_key\": \"%@\"}. "
@@ -501,29 +517,33 @@ objectValueForTableColumn:(NSTableColumn *)tableColumn
         @"Destination / operator (per the manifest): %@\n",
         action.actionID, action.kind, [DispatchStore defaultStorePath], incident.key, action.target];
     if ([actionID isEqualToString:IncidentsActionSend]) {
-        [info appendString:
+        [details appendString:
          @"\nOWNER GATE: the manifest marks incident.email.send requires-confirm. This dispatch will "
          @"sit QUEUED until the owner approves it in the Orchestration Queue pane — queueing sends "
          @"nothing, and no email leaves any account by queueing.\n"];
     }
     if ([actionID isEqualToString:IncidentsActionPhone]) {
-        [info appendString:
+        [details appendString:
          @"\nThe call itself is placed by the phone lane at execution, after approval — never by this app.\n"];
     }
     if ([actionID isEqualToString:IncidentsActionComplaint]) {
-        [info appendString:
+        [details appendString:
          @"\nFiling happens at execution from the incident's asset inventory (the corroboration "
          @"packet). Queueing files nothing.\n"];
     }
     if ([actionID isEqualToString:IncidentsActionWatchArm]) {
-        [info appendString:
+        [details appendString:
          @"\nArming registers a watch on the incident's deadlines/counterparty at execution; "
          @"queueing arms nothing.\n"];
     }
-    [info appendString:@"\nDeclining queues nothing."];
-    [alert setInformativeText:info];
-    [alert addButtonWithTitle:@"Enqueue Dispatch"];
+    [details appendString:@"\nDeclining stages nothing."];
+
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:[NSString stringWithFormat:@"%@ — %@?", action.name, incident.key]];
+    [alert setInformativeText:plainEffect];
+    [alert addButtonWithTitle:@"Stage"];
     [alert addButtonWithTitle:@"Cancel"];
+    [alert addButtonWithTitle:@"Details…"];
 
     NSWindow *window = self.view.window;
     if (window == nil) {
@@ -531,6 +551,19 @@ objectValueForTableColumn:(NSTableColumn *)tableColumn
     }
     __weak IncidentsViewController *weakSelf = self;
     [alert beginSheetModalForWindow:window completionHandler:^(NSModalResponse result) {
+        if (result == NSAlertThirdButtonReturn) {
+            NSAlert *detailsAlert = [[NSAlert alloc] init];
+            [detailsAlert setMessageText:@"Details"];
+            [detailsAlert setInformativeText:details];
+            [detailsAlert addButtonWithTitle:@"Back"];
+            [detailsAlert addButtonWithTitle:@"Cancel"];
+            [detailsAlert beginSheetModalForWindow:window completionHandler:^(NSModalResponse back) {
+                if (back == NSAlertFirstButtonReturn) {
+                    [weakSelf actionButtonClicked:sender];
+                }
+            }];
+            return;
+        }
         if (result != NSAlertFirstButtonReturn) {
             return;
         }
@@ -541,17 +574,25 @@ objectValueForTableColumn:(NSTableColumn *)tableColumn
                                                                            error:&error];
         if (dispatchID < 0) {
             [weakSelf.statusField setStringValue:[NSString stringWithFormat:
-                @"Enqueue failed: %@ — nothing was queued.",
+                @"Not staged: %@.",
                 (error != nil) ? error.localizedDescription : @"unknown error"]];
             return;
         }
         [weakSelf.statusField setStringValue:[NSString stringWithFormat:
-            @"Queued dispatch #%lld (%@) for %@ — see View ▸ Orchestration (⌘5), Queue pane.",
-            dispatchID, actionID, incident.key]];
+            @"Staged for %@ — see View ▸ Orchestration (⌘5), Queue pane.",
+            incident.key]];
         if (weakSelf.dispatchEnqueuedHandler != nil) {
             weakSelf.dispatchEnqueuedHandler((NSInteger)dispatchID, actionID);
         }
     }];
+}
+
+
+#pragma mark - Cell tooltips (the full value behind any truncated cell)
+
+- (NSString *)tableView:(NSTableView *)tableView toolTipForCell:(NSCell *)cell rect:(NSRectPointer)rect tableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row mouseLocation:(NSPoint)mouseLocation {
+    id value = [self tableView:tableView objectValueForTableColumn:tableColumn row:row];
+    return ([value isKindOfClass:[NSString class]] && [value length] > 0) ? value : nil;
 }
 
 @end

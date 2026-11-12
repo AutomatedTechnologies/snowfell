@@ -209,7 +209,7 @@ static NSString * const FieldKindTarget = @"target";        // key "target_id" �
     [root addSubview:_stateFilterPopup];
 
     _cancelButton = [[NSButton alloc] initWithFrame:NSMakeRect(466, 233, 126, 24)];
-    [_cancelButton setTitle:@"Cancel Dispatch"];
+    [_cancelButton setTitle:@"Cancel Staged Action"];
     [_cancelButton setBezelStyle:NSBezelStyleRounded];
     [_cancelButton setTarget:self];
     [_cancelButton setAction:@selector(cancelClicked:)];
@@ -875,62 +875,73 @@ static NSString * const FieldKindTarget = @"target";        // key "target_id" �
     NSString *payloadJSON = [self prettyJSONForObject:storable];
     NSString *precondition = [self preconditionTextForAction:action];
 
+    __weak OrchestrationViewController *weakSelf = self;
     NSAlert *alert = [[NSAlert alloc] init];
-    NSMutableString *info = [NSMutableString string];
+    NSString *details = nil;
     if (githubLane) {
         BoardItem *item = [self selectedItemForNodeID:manifestPayload[@"item"]];
-        [alert setMessageText:[NSString stringWithFormat:@"Queue GitHub mutation — %@?", action.name]];
-        [info appendFormat:
-         @"Lane: GITHUB-DIRECT via the SF-T4 write-back queue. Confirming records a status_move row "
-         @"in the LOCAL write-back queue (%@) — the same queue the Board's Status popup uses.\n\n"
-         @"Destination when eventually sent: %@ (operator: GitHub) over HTTPS.\n"
-         @"Effect when eventually sent: updateProjectV2ItemFieldValue will set the Status of “%@” "
-         @"from “%@” to “%@”.\n\n",
-         [WriteBackQueue defaultStorePath], [GitHubProjectsClient graphQLEndpoint],
-         (item != nil) ? item.title : @"(item)",
-         (item != nil && item.statusName != nil) ? item.statusName : @"(no status)",
-         manifestPayload[@"status"]];
-        [info appendString:
-         @"Arm state: write-back is compiled OFF in this build (SNOWFELL_WRITEBACK_ENABLED = 0), so "
-         @"the row will sit pending; sending additionally requires a Keychain token and the owner's "
-         @"explicit Send Pending action in an armed build. Queueing is not sending, and nothing "
-         @"leaves this Mac by queueing."];
+        NSString *itemTitle = (item != nil) ? item.title : @"(item)";
+        NSString *fromStatus = (item != nil && item.statusName != nil) ? item.statusName : @"(no status)";
+        [alert setMessageText:[NSString stringWithFormat:@"Move “%@” to %@?", itemTitle, manifestPayload[@"status"]]];
+        [alert setInformativeText:[NSString stringWithFormat:
+            @"Status changes from “%@” to “%@”. The change is staged in the same queue as the Board's status moves, on this Mac — nothing is sent until you choose Send Pending Changes.",
+            fromStatus, manifestPayload[@"status"]]];
+        details = [NSString stringWithFormat:
+            @"Lane: GITHUB-DIRECT via the write-back queue.\n\n"
+            @"Effect when sent: updateProjectV2ItemFieldValue will set the Status of “%@” from “%@” to “%@”.\n"
+            @"Destination: %@ (operator: GitHub) over HTTPS.\n"
+            @"Staging store: the local write-back queue at %@.\n"
+            @"Arm state: write-back is compiled OFF in this build (SNOWFELL_WRITEBACK_ENABLED = 0); sending additionally requires a Keychain token and your explicit Send Pending Changes action in an armed build. Staging is not sending, and nothing leaves this Mac by staging.\n\n"
+            @"Payload (exactly as it will be stored):\n%@",
+            itemTitle, fromStatus, manifestPayload[@"status"],
+            [GitHubProjectsClient graphQLEndpoint], [WriteBackQueue defaultStorePath], payloadJSON];
+        [alert addButtonWithTitle:@"Stage Change"];
     } else {
-        [alert setMessageText:[NSString stringWithFormat:@"Queue dispatch — %@?", action.name]];
-        [info appendFormat:
-         @"Lane: ESTATE QUEUE. Confirming records a row in the local dispatch store (%@, table "
-         @"local_dispatches) in state “queued”. Minion/hooks — the estate consumer, SF-T6 — execute "
-         @"approved rows; THIS APP EXECUTES NOTHING from this queue.\n\n"
-         @"Destination / operator (per the manifest): %@\n",
-         [DispatchStore defaultStorePath], action.target];
+        [alert setMessageText:[NSString stringWithFormat:@"Stage “%@”?", action.name]];
+        NSMutableString *info = [NSMutableString stringWithFormat:@"For: %@\n\n", action.target];
         if ([precondition length] > 0) {
-            [info appendFormat:@"\n%@\n", precondition];
+            [info appendFormat:@"%@\n\n", precondition];
         }
         if (action.requiresConfirm) {
-            [info appendString:
-             @"\nThe manifest marks this action requires-confirm: this sheet is that confirmation — "
-             @"for QUEUEING. Queueing is not executing: nothing runs, nothing is sent, and no GitHub "
-             @"call is made by queueing."];
+            [info appendString:@"This action asks for a confirmation before it is staged — this sheet is that confirmation. "];
         }
+        [info appendString:@"Staging runs nothing and sends nothing: the action waits in the queue on this Mac for Minion to carry out after approval."];
+        [alert setInformativeText:info];
+        details = [NSString stringWithFormat:
+            @"Lane: ESTATE QUEUE.\n\n"
+            @"Staging store: the local dispatch store at %@ (table local_dispatches), state “queued”. Minion/hooks — the estate consumer — execute approved rows; this app executes nothing from this queue.\n"
+            @"Destination / operator (per the manifest): %@\n\n"
+            @"Payload (exactly as it will be stored):\n%@",
+            [DispatchStore defaultStorePath], action.target, payloadJSON];
+        [alert addButtonWithTitle:@"Stage Action"];
     }
-    [info appendFormat:@"\n\nPayload (exactly as it will be stored):\n%@", payloadJSON];
-    [alert setInformativeText:info];
-    [alert addButtonWithTitle:githubLane ? @"Enqueue Locally" : @"Enqueue Dispatch"];
     [alert addButtonWithTitle:@"Cancel"];
+    [alert addButtonWithTitle:@"Details…"];
 
     NSWindow *window = self.view.window;
-    __weak OrchestrationViewController *weakSelf = self;
     if (window == nil) {
         return;
     }
     [alert beginSheetModalForWindow:window completionHandler:^(NSModalResponse result) {
-        if (result != NSAlertFirstButtonReturn) {
+        if (result == NSAlertFirstButtonReturn) {
+            [weakSelf performEnqueueAction:action
+                         manifestPayload:manifestPayload
+                            storablePayload:storable
+                               githubLane:githubLane];
             return;
         }
-        [weakSelf performEnqueueAction:action
-                     manifestPayload:manifestPayload
-                        storablePayload:storable
-                           githubLane:githubLane];
+        if (result == NSAlertThirdButtonReturn) {
+            NSAlert *detailsAlert = [[NSAlert alloc] init];
+            [detailsAlert setMessageText:@"Details"];
+            [detailsAlert setInformativeText:details];
+            [detailsAlert addButtonWithTitle:@"Back"];
+            [detailsAlert addButtonWithTitle:@"Cancel"];
+            [detailsAlert beginSheetModalForWindow:window completionHandler:^(NSModalResponse back) {
+                if (back == NSAlertFirstButtonReturn) {
+                    [weakSelf enqueueClicked:nil];
+                }
+            }];
+        }
     }];
 }
 
@@ -941,7 +952,7 @@ static NSString * const FieldKindTarget = @"target";        // key "target_id" �
     NSError *error = nil;
     if (githubLane) {
         if (self.writeBackQueue == nil) {
-            [self showEnqueueFailure:@"The local write-back queue is unavailable in this session; nothing was queued."];
+            [self showEnqueueFailure:@"The staged-changes queue is unavailable in this session; nothing was staged."];
             return;
         }
         int64_t rowID = [self.writeBackQueue enqueueMutationWithKind:WriteBackKindStatusMove
@@ -950,34 +961,34 @@ static NSString * const FieldKindTarget = @"target";        // key "target_id" �
                                                              payload:storablePayload
                                                                error:&error];
         if (rowID < 0) {
-            [self showEnqueueFailure:[NSString stringWithFormat:@"%@\nNothing was queued and nothing was sent.",
+            [self showEnqueueFailure:[NSString stringWithFormat:@"%@\nNothing was staged and nothing was sent.",
                                       (error != nil) ? error.localizedDescription : @"unknown error"]];
             return;
         }
         [_validationField setStringValue:[NSString stringWithFormat:
-                                          @"Queued in the write-back queue (row #%lld) — see View ▸ Write-back Queue (⌘4).", rowID]];
+                                          @"Staged as change #%lld — see View ▸ Staged Changes (⌘4).", rowID]];
         return;
     }
     if (self.dispatchStore == nil) {
-        [self showEnqueueFailure:@"The local dispatch store is unavailable in this session; nothing was queued."];
+        [self showEnqueueFailure:@"The action queue is unavailable in this session; nothing was staged."];
         return;
     }
     int64_t rowID = [self.dispatchStore enqueueDispatchWithActionID:action.actionID
                                                             payload:storablePayload
                                                               error:&error];
     if (rowID < 0) {
-        [self showEnqueueFailure:[NSString stringWithFormat:@"%@\nNothing was queued and nothing was sent.",
+        [self showEnqueueFailure:[NSString stringWithFormat:@"%@\nNothing was staged and nothing was sent.",
                                   (error != nil) ? error.localizedDescription : @"unknown error"]];
         return;
     }
     [self reloadOrchestration];
     [_validationField setStringValue:[NSString stringWithFormat:
-                                      @"Queued as local dispatch #%lld (state: queued).", rowID]];
+                                      @"Staged as action #%lld in the queue below.", rowID]];
 }
 
 - (void)showEnqueueFailure:(NSString *)message {
     NSAlert *alert = [[NSAlert alloc] init];
-    [alert setMessageText:@"Dispatch not queued"];
+    [alert setMessageText:@"Action not staged"];
     [alert setInformativeText:message];
     NSWindow *window = self.view.window;
     if (window != nil) {
@@ -1008,7 +1019,7 @@ static NSString * const FieldKindTarget = @"target";        // key "target_id" �
     NSError *error = nil;
     if (![self.dispatchStore cancelDispatch:dispatch.dispatchID error:&error]) {
         NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText:@"Dispatch not cancelled"];
+        [alert setMessageText:@"Staged action not cancelled"];
         [alert setInformativeText:(error != nil) ? error.localizedDescription : @"unknown error"];
         NSWindow *window = self.view.window;
         if (window != nil) {
