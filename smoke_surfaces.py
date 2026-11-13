@@ -7,11 +7,12 @@ snapshot (Resources/registry.db, read-only) and proves the counts the
 views state:
 
   * Roadmap: boards carrying a 'Start date'/'Target date' field == 19
-    of 74 (design record §4 V5); dated items come only from those
-    boards' EAV date values; a one-ended item (Start XOR Target) is a
-    milestone, never a fabricated span.
+    of 83 (design record §4 V5; board total is the bundled snapshot's —
+    v9-0049 carries 83 after the DAADV6/Arcadia ingest); dated items
+    come only from those boards' EAV date values; a one-ended item
+    (Start XOR Target) is a milestone, never a fabricated span.
   * Palette: the five scopes resolve — boards, items, actions (24
-    manifest rows at v8-0041 — schema/0008 added the 4 storage action
+    manifest rows at v9-0049 — schema/0008 added the 4 storage action
     kinds to the 20 of v7-0031), deploy targets (5), drafts view (0
     rows until compositions exist — truthful, not a failure).
   * Palette routing resolution: itemWithNodeID returns a real item for
@@ -101,7 +102,7 @@ def main():
 
     total_boards = conn.execute("SELECT COUNT(*) FROM sf_boards").fetchone()[0]
     dated_boards = conn.execute(BOARDS_WITH_DATE_FIELDS_SQL).fetchone()[0]
-    assert total_boards == 74, f"expected 74 boards, got {total_boards}"
+    assert total_boards == 83, f"expected 83 boards at v9-0049, got {total_boards}"
     assert dated_boards == 19, f"expected 19 dated boards, got {dated_boards}"
     print(f"roadmap denominator: {dated_boards} of {total_boards} boards carry date fields")
 
@@ -119,7 +120,7 @@ def main():
     actions = conn.execute("SELECT COUNT(*) FROM sf_actions").fetchone()[0]
     targets = conn.execute("SELECT COUNT(*) FROM sf_deploy_targets").fetchone()[0]
     drafts = conn.execute("SELECT COUNT(*) FROM sf_upcoming_drafts").fetchone()[0]
-    assert actions == 24, f"expected 24 sf_actions at v8-0041, got {actions}"
+    assert actions == 24, f"expected 24 sf_actions at v9-0049, got {actions}"
     assert targets == 5, f"expected 5 deploy targets, got {targets}"
     assert drafts == 0, f"expected 0 upcoming drafts (none composed yet), got {drafts}"
     print(f"palette scopes: boards={boards} actions={actions} targets={targets} drafts={drafts}")

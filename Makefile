@@ -21,6 +21,8 @@ SOURCES = \
 	Snowfell/CommandPaletteViewController.m \
 	Snowfell/IncidentsViewController.m \
 	Snowfell/StorageViewController.m \
+	Snowfell/NavigationBar.m \
+	Snowfell/UpdatesViewController.m \
 	Snowfell/CloudServiceClient.m \
 	Snowfell/CloudModels.m \
 	Snowfell/SnapshotStore.m \
@@ -54,6 +56,8 @@ HEADERS = \
 	Snowfell/CommandPaletteViewController.h \
 	Snowfell/IncidentsViewController.h \
 	Snowfell/StorageViewController.h \
+	Snowfell/NavigationBar.h \
+	Snowfell/UpdatesViewController.h \
 	Snowfell/CloudServiceClient.h \
 	Snowfell/CloudModels.h \
 	Snowfell/SnapshotStore.h \
@@ -76,10 +80,10 @@ HEADERS = \
 
 # startup-sound.wav: byte-identical to the SDS-10 library master,
 # SHA-256 07a113244c6b432b22954a089ce519bd239311b14a48f26ae85214ed8c25b09a.
-# registry.db + snapshot-manifest.json: registry snapshot v8-0041,
-# SHA-256 52df7ed66e73f0881e10b79e1ec92eef81f893257536398d2453babeee64a1e3
-# (schema 8 — includes the §12 incident domain and the SF-T12 sf_cloud_*
-# catalog projection; refreshed at the snowfell-test-2 repack from the
+# registry.db + snapshot-manifest.json: registry snapshot v9-0049,
+# SHA-256 4bd7ec4e4499eeaaefef8c1b3d57fc78591c97f90f5768720af7f07e625d2328
+# (schema 9 — includes the §12 incident domain and the SF-T12 sf_cloud_*
+# catalog projection; refreshed at the snowfell-test-4 repack from the
 # served snapshot of record; SnapshotSync can advance it further at
 # runtime).
 RESOURCES = \

@@ -10,6 +10,8 @@
 #import "IncidentsViewController.h"
 #import "IncidentModels.h"
 #import "StorageViewController.h"
+#import "UpdatesViewController.h"
+#import "NavigationBar.h"
 #import "CloudServiceClient.h"
 #import "AcademyTheme.h"
 #import "BoardSummary.h"
@@ -44,6 +46,10 @@
 @property (nonatomic, strong) NSWindow *incidentsWindow;
 @property (nonatomic, strong) StorageViewController *storageController;
 @property (nonatomic, strong) NSWindow *storageWindow;
+// snowfell-test-4: the Updates lens (⌘9) — reads the same sync session
+// state the Preferences block shows, refreshed by the same push.
+@property (nonatomic, strong) UpdatesViewController *updatesController;
+@property (nonatomic, strong) NSWindow *updatesWindow;
 // SF-T12f: the Storage lens's REST client — created LAZILY by its
 // getter on first use (the client itself is stateless apart from its
 // session; the operator token is never held here or anywhere but the
@@ -123,6 +129,7 @@
     // behind every lens hosted in the main window.
     [self.mainWindow setBackgroundColor:[AcademyTheme windowColor]];
     [self.mainWindow setContentViewController:self.portfolioController];
+    [self attachNavigationBarToWindow:self.mainWindow section:SFNavigationSectionPortfolio];
     [self.mainWindow setMinSize:NSMakeSize(720, 420)];
     [self.mainWindow center];
     [self.mainWindow makeKeyAndOrderFront:nil];
@@ -284,6 +291,13 @@
                                            target:self];
     [storageItem setTag:209];
     [viewMenu addItem:storageItem];
+    // snowfell-test-4: the Updates lens (⌘9) — snapshot sync's own surface.
+    NSMenuItem *updatesItem = [self itemWithTitle:@"Updates"
+                                           action:@selector(showUpdates:)
+                                    keyEquivalent:@"9"
+                                           target:self];
+    [updatesItem setTag:211];
+    [viewMenu addItem:updatesItem];
     [viewMenu addItem:[NSMenuItem separatorItem]];
     // SF-T7: ⌘K is an ordinary app-menu item — the app's ONLY palette
     // registration (no global hotkey, nothing outside this menu).
@@ -394,6 +408,9 @@
     }
     if ([menuItem tag] == 209) {
         return YES;  // the Storage lens always opens; it states its own state (pairing / stopped / running)
+    }
+    if ([menuItem tag] == 211) {
+        return YES;  // the Updates lens always opens; it states the sync session's state
     }
     if ([menuItem tag] == 302) {
         // Checking is always safe: it is a read-only GET of the Academy's
@@ -690,6 +707,11 @@
     [self.palettePanel close];
     self.palettePanel = nil;
     self.paletteController = nil;
+    // snowfell-test-4: the Updates lens reads store state too — it
+    // closes on a swap and rebuilds fresh against the new store.
+    [self.updatesWindow close];
+    self.updatesWindow = nil;
+    self.updatesController = nil;
 }
 
 - (IBAction)refreshPortfolio:(id)sender {
@@ -701,6 +723,15 @@
 // Pushes the session's sync state into the Preferences block when the
 // window exists. Called on Preferences open and after every sync step.
 - (void)refreshSnapshotSyncBlock {
+    // snowfell-test-4: the Updates lens refreshes from the SAME session
+    // state, on every sync step — not only when Preferences is open.
+    if (self.updatesController != nil) {
+        self.updatesController.servedVersion = self.servedManifest[@"version"];
+        self.updatesController.statusText = self.syncStatusText;
+        self.updatesController.stagedUpdateAvailable =
+            (self.stagedDatabasePath != nil && self.stagedManifestPath != nil);
+        [self.updatesController refreshUpdates];
+    }
     if (self.preferencesWindow == nil) {
         return;
     }
@@ -905,6 +936,7 @@
                                                            defer:NO];
         [window setTitle:@"Snowfell — Board"];
         [window setContentViewController:self.boardController];
+        [self attachNavigationBarToWindow:window section:SFNavigationSectionBoard];
         [window setMinSize:NSMakeSize(760, 440)];
         [window center];
         self.boardWindow = window;
@@ -938,6 +970,8 @@
                                                            defer:NO];
         [window setTitle:@"Snowfell — Item Detail"];
         [window setContentViewController:self.detailController];
+        // Item Detail is the Board's drill-down: its bar selects Board.
+        [self attachNavigationBarToWindow:window section:SFNavigationSectionBoard];
         [window setMinSize:NSMakeSize(620, 460)];
         [window center];
         self.detailWindow = window;
@@ -968,6 +1002,7 @@
                                                            defer:NO];
         [window setTitle:@"Snowfell — Staged Changes"];
         [window setContentViewController:self.queueController];
+        [self attachNavigationBarToWindow:window section:SFNavigationSectionStaged];
         [window setMinSize:NSMakeSize(700, 380)];
         [window center];
         self.queueWindow = window;
@@ -995,6 +1030,7 @@
                                                            defer:NO];
         [window setTitle:@"Snowfell — Orchestration Center"];
         [window setContentViewController:self.orchestrationController];
+        [self attachNavigationBarToWindow:window section:SFNavigationSectionOrchestration];
         [window setMinSize:NSMakeSize(1180, 720)];
         [window center];
         self.orchestrationWindow = window;
@@ -1041,6 +1077,7 @@
                                                            defer:NO];
         [window setTitle:@"Snowfell — Roadmap"];
         [window setContentViewController:self.roadmapController];
+        [self attachNavigationBarToWindow:window section:SFNavigationSectionRoadmap];
         [window setMinSize:NSMakeSize(760, 440)];
         [window center];
         self.roadmapWindow = window;
@@ -1125,6 +1162,7 @@
                                                            defer:NO];
         [window setTitle:@"Snowfell — Incidents"];
         [window setContentViewController:self.incidentsController];
+        [self attachNavigationBarToWindow:window section:SFNavigationSectionIncidents];
         [window setMinSize:NSMakeSize(1100, 680)];
         [window center];
         self.incidentsWindow = window;
@@ -1163,12 +1201,72 @@
                                                            defer:NO];
         [window setTitle:@"Snowfell — Storage"];
         [window setContentViewController:self.storageController];
+        [self attachNavigationBarToWindow:window section:SFNavigationSectionStorage];
         [window setMinSize:NSMakeSize(1100, 680)];
         [window center];
         self.storageWindow = window;
     }
     [self.storageController reloadStorage];
     [self.storageWindow makeKeyAndOrderFront:sender];
+    [NSApp activateIgnoringOtherApps:YES];
+}
+
+#pragma mark - snowfell-test-4 navigation bar + Updates lens (⌘9)
+
+// The one attach call every window creation site uses: NavigationBar
+// builds the shared toolbar; this window's own section starts selected.
+- (void)attachNavigationBarToWindow:(NSWindow *)window section:(SFNavigationSection)section {
+    [NavigationBar attachToWindow:window
+                          section:section
+                           target:self
+                           action:@selector(navigationSegmentChanged:)];
+}
+
+// A segment press routes to the EXISTING show action for that lens —
+// the bar adds no navigation logic of its own.
+- (IBAction)navigationSegmentChanged:(id)sender {
+    NSSegmentedControl *control = (NSSegmentedControl *)sender;
+    switch ([control selectedSegment]) {
+        case SFNavigationSectionPortfolio:    [self showPortfolio:sender]; break;
+        case SFNavigationSectionBoard:        [self showBoard:sender]; break;
+        case SFNavigationSectionStaged:       [self showWriteBackQueue:sender]; break;
+        case SFNavigationSectionOrchestration: [self showOrchestrationCenter:sender]; break;
+        case SFNavigationSectionRoadmap:      [self showRoadmap:sender]; break;
+        case SFNavigationSectionIncidents:    [self showIncidents:sender]; break;
+        case SFNavigationSectionStorage:      [self showStorage:sender]; break;
+        case SFNavigationSectionUpdates:      [self showUpdates:sender]; break;
+        default: break;
+    }
+}
+
+- (IBAction)showUpdates:(id)sender {
+    if (self.updatesController == nil) {
+        self.updatesController = [[UpdatesViewController alloc] initWithSnapshotStore:self.snapshotStore];
+        __weak AppDelegate *weakSelf = self;
+        self.updatesController.checkRequestedHandler = ^{
+            [weakSelf checkForSnapshotUpdate:nil];
+        };
+        self.updatesController.applyRequestedHandler = ^{
+            [weakSelf applyStagedSnapshot:nil];
+        };
+    }
+    if (self.updatesWindow == nil) {
+        NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 680, 340)
+                                                       styleMask:(NSWindowStyleMaskTitled |
+                                                                  NSWindowStyleMaskClosable |
+                                                                  NSWindowStyleMaskMiniaturizable |
+                                                                  NSWindowStyleMaskResizable)
+                                                         backing:NSBackingStoreBuffered
+                                                           defer:NO];
+        [window setTitle:@"Snowfell — Updates"];
+        [window setContentViewController:self.updatesController];
+        [self attachNavigationBarToWindow:window section:SFNavigationSectionUpdates];
+        [window setMinSize:NSMakeSize(560, 300)];
+        [window center];
+        self.updatesWindow = window;
+    }
+    [self refreshSnapshotSyncBlock];
+    [self.updatesWindow makeKeyAndOrderFront:sender];
     [NSApp activateIgnoringOtherApps:YES];
 }
 
@@ -1553,7 +1651,14 @@
      @"on 127.0.0.1 only (the port is a Preferences setting; the host "
      @"never is). The lens starts/stops the bundled helper and pairs "
      @"the operator token into the Keychain on first use; without a "
-     @"token it shows the pairing pane instead of data."];
+     @"token it shows the pairing pane instead of data.\n\n"
+     @"Navigation bar + Updates (snowfell-test-4): every window "
+     @"carries the same navigation bar — Portfolio, Board, Staged, "
+     @"Orchestration, Roadmap, Incidents, Storage, Updates — and one "
+     @"click moves between lenses. View ▸ Updates (⌘9) shows the "
+     @"running snapshot next to the published one, in plain terms, "
+     @"with the Check Now and Apply Update buttons; snapshot sync "
+     @"itself works exactly as it did before."];
     [alert beginSheetModalForWindow:self.mainWindow completionHandler:nil];
 }
 

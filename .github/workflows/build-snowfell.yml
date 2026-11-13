@@ -56,7 +56,7 @@ jobs:
             clang.log
             service-build.log
 
-      # Build identity is FIXED at snowfell-test-3 for this build line:
+      # Build identity is FIXED at snowfell-test-4 for this build line:
       # github.run_number counts CI attempts, not builds. The attempt
       # number stays visible in the release notes stamp. (test-2 note:
       # its attempt 2 failed at the storage-service step on strict-C99
@@ -65,7 +65,7 @@ jobs:
         if: success()
         run: |
           APP="Snowfell.app"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion snowfell-test-3" "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion snowfell-test-4" "$APP/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Contents/Info.plist"
@@ -87,12 +87,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           BUILT=$(date -u '+%Y-%m-%d %H:%M UTC')
-          NOTES="Internal test build of Snowfell, the Detroit Automation Academy's Jira-style board app over GitHub Projects for macOS High Sierra: every Academy project board in one native window — portfolio, per-board kanban in each board's own status vocabulary, item detail, orchestration queue (staging-only in this build), roadmap, command palette, incidents lens — reading a pinned, hash-verified registry snapshot, fully offline. Write-back is compiled OFF in this build. Publisher: Detroit Automation Academy. Unsigned test build — not gate-cleared, not yet verified on the High Sierra rig; install from the Distro catalog (testing).
+          NOTES="Internal test build of Snowfell, the Detroit Automation Academy's Jira-style board app over GitHub Projects for macOS High Sierra: every Academy project board in one native window — a navigation bar on every window, portfolio, per-board kanban in each board's own status vocabulary, item detail, orchestration queue (staging-only in this build), roadmap, command palette, incidents lens, updates lens — reading a pinned, hash-verified registry snapshot, fully offline. Write-back is compiled OFF in this build. Publisher: Detroit Automation Academy. Unsigned test build — not gate-cleared, not yet verified on the High Sierra rig; install from the Distro catalog (testing).
 
-          NEW IN snowfell-test-3 (owner UI verdicts of 2026-11-12, applied on the test-2 build): (1) every staging confirmation now reads as the action in plain terms — e.g. Move "X" to Done on "Board"? — with workflow-language buttons (Stage Move / Stage Item / Stage Comment; Send Pending Changes is the push); the full technical record (GraphQL mutation name, endpoint, staging-store path, arm state, exact payload) moved behind each sheet's Details button and into the Staged Changes panel's row tooltips — auditability kept, primary-surface clutter gone; (2) the same declutter swept the Orchestration and Incidents action confirmations, the queue panel, and the armed-state copy; (3) the Incidents lens header is one plain line (next open deadline first; nothing is sent without the owner's approval) and its state/label columns were widened with full-value tooltips, ending the silent truncation; (4) menu labels follow state at menu-open time: Enter/Exit Full Screen follows the window's actual state, and Show Closed Boards / Show Archived Boards toggle to Hide while on. Safety properties are unchanged: write-back remains compiled OFF, and nothing sends without the owner's explicit Send Pending Changes in an armed build. Everything test-2 shipped carries over unchanged: the interface uplift to the decision-gate HTML baseline, the SF-T12 storage domain (SnowfellStorageService bundled in Contents/MacOS, V12 Storage lens on Cmd-8), bundled registry snapshot v8-0041 (schema 8), and the board-state derivation presentation.
+          NEW IN snowfell-test-4 (owner directive of 2026-11-13: "Snowfell needs a navigation bar"): (1) every Snowfell window now carries the same navigation bar — one shared NavigationBar toolbar with eight segments (Portfolio · Board · Staged · Orchestration · Roadmap · Incidents · Storage · Updates) wired to the app's existing View-menu and Cmd-key paths; the filled segment names the window you are in, so the eight lenses are finally visible and reachable from anywhere in the app; (2) a new Updates lens (Cmd-9) gives snapshot state a home: the running snapshot beside the served snapshot with a plain gap line, the session's sync status, and Check Now / Apply Update as separate presses — the SF-T6 discipline is unchanged and the lens adds no network code; (3) the bundled registry snapshot advances from v8-0041 to v9-0049 (83 boards, 763 items, 5 incidents), size- and SHA-256-verified against the served manifest at packaging. Everything test-3 shipped carries over unchanged: the decluttered staging language with the technical record behind Details, menu labels that follow state, the interface uplift to the decision-gate baseline, the SF-T12 storage domain (SnowfellStorageService in Contents/MacOS, Storage lens on Cmd-8), and the board-state derivation presentation. Safety properties are unchanged: write-back remains compiled OFF, and nothing sends without the owner's explicit Send Pending Changes in an armed build.
 
-          BUILD STAMP — Built: $BUILT · Build: snowfell-test-3 (CI run ${{ github.run_id }}, attempt ${{ github.run_number }}) · Agent: Minion · Authorized: J. Spencer Smith, owner UI verdicts of 2026-11-12 (declutter + menu state labels) on the same day's uplift build"
-          gh release create snowfell-test-3 Snowfell-test.zip \
+          BUILD STAMP — Built: $BUILT · Build: snowfell-test-4 (CI run ${{ github.run_id }}, attempt ${{ github.run_number }}) · Agent: Minion · Authorized: J. Spencer Smith, directive of 2026-11-13 (navigation bar + Updates lens, 15-minute dev cadence)"
+          gh release create snowfell-test-4 Snowfell-test.zip \
             --prerelease \
-            --title "Snowfell test build 3" \
+            --title "Snowfell test build 4" \
             --notes "$NOTES"

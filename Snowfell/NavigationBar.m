@@ -1,0 +1,83 @@
+#import "NavigationBar.h"
+#import <objc/runtime.h>
+
+NSToolbarIdentifier const SFNavigationToolbarIdentifier = @"SnowfellNavigationToolbar";
+NSToolbarItemIdentifier const SFNavigationSegmentsItemIdentifier = @"SnowfellNavigationSegments";
+
+// The builder lives as long as its window: it is the toolbar's delegate
+// and the segmented control's owner, so the window retains it through
+// an associated object (the toolbar itself does not retain its delegate).
+static const void *SFNavigationBarBuilderKey = &SFNavigationBarBuilderKey;
+
+@interface NavigationBar ()
+@property (nonatomic, strong) NSSegmentedControl *segmentedControl;
+@property (nonatomic, weak) id segmentTarget;
+@property (nonatomic, assign) SEL segmentAction;
+@end
+
+@implementation NavigationBar
+
++ (NSArray<NSString *> *)sectionLabels {
+    return @[@"Portfolio", @"Board", @"Staged", @"Orchestration",
+             @"Roadmap", @"Incidents", @"Storage", @"Updates"];
+}
+
++ (void)attachToWindow:(NSWindow *)window
+               section:(SFNavigationSection)section
+                target:(id)target
+                action:(SEL)action {
+    NavigationBar *bar = [[NavigationBar alloc] init];
+    bar.segmentTarget = target;
+    bar.segmentAction = action;
+
+    NSSegmentedControl *control = [NSSegmentedControl
+        segmentedControlWithLabels:[self sectionLabels]
+                      trackingMode:NSSegmentSwitchTrackingSelectOne
+                            target:target
+                            action:action];
+    [control setSelectedSegment:section];
+    [control sizeToFit];
+    bar.segmentedControl = control;
+
+    NSToolbar *toolbar = [[NSToolbar alloc] initWithIdentifier:SFNavigationToolbarIdentifier];
+    [toolbar setDelegate:bar];
+    [toolbar setAllowsUserCustomization:NO];
+    [toolbar setAutosavesConfiguration:NO];
+    [window setToolbar:toolbar];
+
+    objc_setAssociatedObject(window, SFNavigationBarBuilderKey, bar,
+                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
++ (void)selectSection:(SFNavigationSection)section inWindow:(NSWindow *)window {
+    NavigationBar *bar = objc_getAssociatedObject(window, SFNavigationBarBuilderKey);
+    [bar.segmentedControl setSelectedSegment:section];
+}
+
+#pragma mark - NSToolbarDelegate
+
+- (NSToolbarItem *)toolbar:(NSToolbar *)toolbar
+     itemForItemIdentifier:(NSToolbarItemIdentifier)itemIdentifier
+ willBeInsertedIntoToolbar:(BOOL)flag {
+    if (![itemIdentifier isEqualToString:SFNavigationSegmentsItemIdentifier]) {
+        return nil;
+    }
+    NSToolbarItem *item = [[NSToolbarItem alloc] initWithItemIdentifier:itemIdentifier];
+    [item setLabel:@"Navigate"];
+    [item setPaletteLabel:@"Navigate"];
+    [item setView:self.segmentedControl];
+    NSSize size = self.segmentedControl.frame.size;
+    [item setMinSize:size];
+    [item setMaxSize:size];
+    return item;
+}
+
+- (NSArray<NSToolbarItemIdentifier> *)toolbarDefaultItemIdentifiers:(NSToolbar *)toolbar {
+    return @[SFNavigationSegmentsItemIdentifier];
+}
+
+- (NSArray<NSToolbarItemIdentifier> *)toolbarAllowedItemIdentifiers:(NSToolbar *)toolbar {
+    return @[SFNavigationSegmentsItemIdentifier];
+}
+
+@end
