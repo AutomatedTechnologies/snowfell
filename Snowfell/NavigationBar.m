@@ -11,6 +11,7 @@ static const void *SFNavigationBarBuilderKey = &SFNavigationBarBuilderKey;
 
 @interface NavigationBar ()
 @property (nonatomic, strong) NSSegmentedControl *segmentedControl;
+@property (nonatomic, strong) NSToolbarItem *segmentsItem;
 @property (nonatomic, weak) id segmentTarget;
 @property (nonatomic, assign) SEL segmentAction;
 @end
@@ -82,14 +83,23 @@ static const void *SFNavigationBarBuilderKey = &SFNavigationBarBuilderKey;
     if (![itemIdentifier isEqualToString:SFNavigationSegmentsItemIdentifier]) {
         return nil;
     }
-    NSToolbarItem *item = [[NSToolbarItem alloc] initWithItemIdentifier:itemIdentifier];
-    [item setLabel:@"Navigate"];
-    [item setPaletteLabel:@"Navigate"];
-    [item setView:self.segmentedControl];
-    NSSize size = self.segmentedControl.frame.size;
-    [item setMinSize:size];
-    [item setMaxSize:size];
-    return item;
+    // snowfell-test-6 (defect record files/11, suspect S2): the item is
+    // built ONCE and the SAME instance is returned on every call. The
+    // pre-test-6 delegate returned a NEW item per call while installing
+    // the SAME segmented control view in each — a view may live in only
+    // one toolbar item, so a second request (toolbar rebuild, window
+    // becoming key, validation) stole the control from the first item.
+    if (self.segmentsItem == nil) {
+        NSToolbarItem *item = [[NSToolbarItem alloc] initWithItemIdentifier:itemIdentifier];
+        [item setLabel:@"Navigate"];
+        [item setPaletteLabel:@"Navigate"];
+        [item setView:self.segmentedControl];
+        NSSize size = self.segmentedControl.frame.size;
+        [item setMinSize:size];
+        [item setMaxSize:size];
+        self.segmentsItem = item;
+    }
+    return self.segmentsItem;
 }
 
 - (NSArray<NSToolbarItemIdentifier> *)toolbarDefaultItemIdentifiers:(NSToolbar *)toolbar {

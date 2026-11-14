@@ -26,14 +26,24 @@
 #import "SnapshotSync.h"
 
 @interface AppDelegate () <BoardViewControllerDelegate>
+// snowfell-test-6: SINGLE-WINDOW model (owner verdict 2026-11-14: the
+// test-4 bar "haphazard and inconsistent — some buttons open new
+// windows, others open in same"). There is exactly ONE lens window —
+// mainWindow — and all eight lenses live in it as content view
+// controllers, switched in place by displaySection:. The satellite
+// window properties (boardWindow / queueWindow / orchestrationWindow /
+// roadmapWindow / incidentsWindow / storageWindow / updatesWindow) are
+// GONE: their releasedWhenClosed lifetime web is also the test-5
+// Staged crash's fault path (files/11 + files/12). What remains a
+// window is auxiliary by design and carries no segment bar: Item
+// Detail (the Board's drill-down), the Command Palette panel, and
+// Preferences — each created with releasedWhenClosed = NO so a close
+// can never leave a dangling property behind.
 @property (nonatomic, strong) NSWindow *mainWindow;
-@property (nonatomic, strong) NSWindow *boardWindow;
 @property (nonatomic, strong) NSWindow *detailWindow;
-@property (nonatomic, strong) NSWindow *queueWindow;
-@property (nonatomic, strong) NSWindow *orchestrationWindow;
-@property (nonatomic, strong) NSWindow *roadmapWindow;
 @property (nonatomic, strong) NSPanel *palettePanel;
 @property (nonatomic, strong) NSWindow *preferencesWindow;
+@property (nonatomic, assign) SFNavigationSection currentSection;
 @property (nonatomic, strong) SnapshotStore *snapshotStore;
 @property (nonatomic, strong) PortfolioViewController *portfolioController;
 @property (nonatomic, strong) BoardViewController *boardController;
@@ -43,13 +53,10 @@
 @property (nonatomic, strong) RoadmapViewController *roadmapController;
 @property (nonatomic, strong) CommandPaletteViewController *paletteController;
 @property (nonatomic, strong) IncidentsViewController *incidentsController;
-@property (nonatomic, strong) NSWindow *incidentsWindow;
 @property (nonatomic, strong) StorageViewController *storageController;
-@property (nonatomic, strong) NSWindow *storageWindow;
 // snowfell-test-4: the Updates lens (⌘9) — reads the same sync session
 // state the Preferences block shows, refreshed by the same push.
 @property (nonatomic, strong) UpdatesViewController *updatesController;
-@property (nonatomic, strong) NSWindow *updatesWindow;
 // SF-T12f: the Storage lens's REST client — created LAZILY by its
 // getter on first use (the client itself is stateless apart from its
 // session; the operator token is never held here or anywhere but the
@@ -116,7 +123,13 @@
     self.portfolioController = [[PortfolioViewController alloc] initWithSnapshotStore:self.snapshotStore];
     [self wirePortfolioController];
 
-    NSRect frame = NSMakeRect(0, 0, 960, 600);
+    // snowfell-test-6 sizing rule (the ONE rule, of record in files/12):
+    // the single window's frame NEVER changes on a lens switch, and its
+    // minimum size is the largest lens's own requirement — the
+    // Orchestration Center's 1180 x 720 — so every lens fits the same
+    // frame and no switch ever resizes, re-centers, or re-orders a
+    // window. Initial frame = that minimum.
+    NSRect frame = NSMakeRect(0, 0, 1180, 720);
     self.mainWindow = [[NSWindow alloc] initWithContentRect:frame
                                                   styleMask:(NSWindowStyleMaskTitled |
                                                              NSWindowStyleMaskClosable |
@@ -124,13 +137,15 @@
                                                              NSWindowStyleMaskResizable)
                                                     backing:NSBackingStoreBuffered
                                                       defer:NO];
+    [self.mainWindow setReleasedWhenClosed:NO];
     [self.mainWindow setTitle:@"Snowfell — Portfolio"];
     // snowfell-test-2 uplift: the baseline window field (--win #f6f6f6)
     // behind every lens hosted in the main window.
     [self.mainWindow setBackgroundColor:[AcademyTheme windowColor]];
     [self.mainWindow setContentViewController:self.portfolioController];
     [self attachNavigationBarToWindow:self.mainWindow section:SFNavigationSectionPortfolio];
-    [self.mainWindow setMinSize:NSMakeSize(720, 420)];
+    [self.mainWindow setMinSize:NSMakeSize(1180, 720)];
+    self.currentSection = SFNavigationSectionPortfolio;
     [self.mainWindow center];
     [self.mainWindow makeKeyAndOrderFront:nil];
 
@@ -446,6 +461,10 @@
                                                        styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                                                          backing:NSBackingStoreBuffered
                                                            defer:NO];
+        // snowfell-test-6: Preferences is re-shown from this property
+        // for the app's whole life — its lifetime must not be tied to
+        // its closed state (the test-5 Staged crash's defect class).
+        [window setReleasedWhenClosed:NO];
         [window setTitle:@"Snowfell Preferences"];
         NSView *content = [window contentView];
 
@@ -681,37 +700,33 @@
 }
 
 // The ONE swap flow every snapshot replacement uses (File > Open
-// Snapshot... since SF-T2; SF-T6 Apply Update since this tranche): the
-// Portfolio rebuilds against the new store, and Board / Detail /
-// Orchestration windows close — they were reading the replaced snapshot
-// and rebuild lazily against the new store on demand. (The local stores
-// — write-back queue + dispatches — are snapshot-independent and are
-// never touched by a swap.)
+// Snapshot... since SF-T2; SF-T6 Apply Update since this tranche).
+// snowfell-test-6 single-window form: the Portfolio rebuilds against
+// the new store; every other snapshot-reading lens controller is
+// DROPPED and rebuilds lazily against the new store the next time its
+// section is displayed; the section on screen is re-displayed fresh in
+// place — no window closes, because there are no satellite windows to
+// close. The auxiliary surfaces that read the old store (Item Detail,
+// the palette) close and rebuild on demand. (The local stores —
+// write-back queue + dispatches — are snapshot-independent and are
+// never touched by a swap, so the Staged and Storage controllers,
+// which read only those, survive a swap intact.)
 - (void)adoptLoadedSnapshotStore:(SnapshotStore *)store {
     self.snapshotStore = store;
     self.portfolioController = [[PortfolioViewController alloc] initWithSnapshotStore:store];
     [self wirePortfolioController];
-    [self.mainWindow setContentViewController:self.portfolioController];
-    [self.boardWindow close];
-    self.boardWindow = nil;
-    self.boardController = nil;
     [self.detailWindow close];
     self.detailWindow = nil;
     self.detailController = nil;
-    [self.orchestrationWindow close];
-    self.orchestrationWindow = nil;
-    self.orchestrationController = nil;
-    [self.roadmapWindow close];
-    self.roadmapWindow = nil;
-    self.roadmapController = nil;
     [self.palettePanel close];
     self.palettePanel = nil;
     self.paletteController = nil;
-    // snowfell-test-4: the Updates lens reads store state too — it
-    // closes on a swap and rebuilds fresh against the new store.
-    [self.updatesWindow close];
-    self.updatesWindow = nil;
+    self.boardController = nil;
+    self.orchestrationController = nil;
+    self.roadmapController = nil;
+    self.incidentsController = nil;
     self.updatesController = nil;
+    [self displaySection:self.currentSection];
 }
 
 - (IBAction)refreshPortfolio:(id)sender {
@@ -912,8 +927,7 @@
 }
 
 - (IBAction)showPortfolio:(id)sender {
-    [self.mainWindow makeKeyAndOrderFront:sender];
-    [NSApp activateIgnoringOtherApps:YES];
+    [self displaySection:SFNavigationSectionPortfolio];
 }
 
 - (IBAction)showBoard:(id)sender {
@@ -923,9 +937,7 @@
     } else {
         // No Portfolio selection: the Board opens on its own default
         // (user board #3) rather than doing nothing.
-        [self ensureBoardWindow];
-        [self.boardWindow makeKeyAndOrderFront:sender];
-        [NSApp activateIgnoringOtherApps:YES];
+        [self displaySection:SFNavigationSectionBoard];
     }
 }
 
@@ -936,7 +948,7 @@
     }
 }
 
-- (void)ensureBoardWindow {
+- (void)ensureBoardController {
     if (self.boardController == nil) {
         self.boardController = [[BoardViewController alloc] initWithSnapshotStore:self.snapshotStore];
         self.boardController.delegate = self;
@@ -953,28 +965,11 @@
             [weakSelf handleCreateItemRequestForBoard:board title:title optionName:optionName];
         };
     }
-    if (self.boardWindow == nil) {
-        NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1120, 660)
-                                                       styleMask:(NSWindowStyleMaskTitled |
-                                                                  NSWindowStyleMaskClosable |
-                                                                  NSWindowStyleMaskMiniaturizable |
-                                                                  NSWindowStyleMaskResizable)
-                                                         backing:NSBackingStoreBuffered
-                                                           defer:NO];
-        [window setTitle:@"Snowfell — Board"];
-        [window setContentViewController:self.boardController];
-        [self attachNavigationBarToWindow:window section:SFNavigationSectionBoard];
-        [window setMinSize:NSMakeSize(760, 440)];
-        [window center];
-        self.boardWindow = window;
-    }
 }
 
 - (void)openBoardForBoard:(BoardSummary *)board {
-    [self ensureBoardWindow];
+    [self displaySection:SFNavigationSectionBoard];
     [self.boardController showBoard:board];
-    [self.boardWindow makeKeyAndOrderFront:nil];
-    [NSApp activateIgnoringOtherApps:YES];
 }
 
 - (void)presentDetailForItem:(BoardItem *)item {
@@ -995,10 +990,13 @@
                                                                   NSWindowStyleMaskResizable)
                                                          backing:NSBackingStoreBuffered
                                                            defer:NO];
+        // snowfell-test-6: Item Detail is an auxiliary surface — it
+        // carries NO segment bar (the bar lives on the main window
+        // only), and its lifetime is not tied to its closed state:
+        // it is re-shown from this property after every close.
+        [window setReleasedWhenClosed:NO];
         [window setTitle:@"Snowfell — Item Detail"];
         [window setContentViewController:self.detailController];
-        // Item Detail is the Board's drill-down: its bar selects Board.
-        [self attachNavigationBarToWindow:window section:SFNavigationSectionBoard];
         [window setMinSize:NSMakeSize(620, 460)];
         [window center];
         self.detailWindow = window;
@@ -1011,60 +1009,13 @@
 #pragma mark - SF-T4 write-back (queue-only in this build)
 
 - (IBAction)showWriteBackQueue:(id)sender {
-    if (self.queueController == nil) {
-        self.queueController = [[WriteBackQueueViewController alloc] initWithQueue:self.writeBackQueue
-                                                                            client:self.githubClient];
-        __weak AppDelegate *weakSelf = self;
-        self.queueController.sendRequestedHandler = ^{
-            [weakSelf sendPendingMutations:nil];
-        };
-    }
-    if (self.queueWindow == nil) {
-        NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 900, 520)
-                                                       styleMask:(NSWindowStyleMaskTitled |
-                                                                  NSWindowStyleMaskClosable |
-                                                                  NSWindowStyleMaskMiniaturizable |
-                                                                  NSWindowStyleMaskResizable)
-                                                         backing:NSBackingStoreBuffered
-                                                           defer:NO];
-        [window setTitle:@"Snowfell — Staged Changes"];
-        [window setContentViewController:self.queueController];
-        [self attachNavigationBarToWindow:window section:SFNavigationSectionStaged];
-        [window setMinSize:NSMakeSize(700, 380)];
-        [window center];
-        self.queueWindow = window;
-    }
-    [self.queueController reloadQueue];
-    [self.queueWindow makeKeyAndOrderFront:sender];
-    [NSApp activateIgnoringOtherApps:YES];
+    [self displaySection:SFNavigationSectionStaged];
 }
 
 #pragma mark - SF-T5 orchestration (queue-only in this app, both lanes)
 
 - (IBAction)showOrchestrationCenter:(id)sender {
-    if (self.orchestrationController == nil) {
-        self.orchestrationController = [[OrchestrationViewController alloc] initWithSnapshotStore:self.snapshotStore
-                                                                                    dispatchStore:self.dispatchStore
-                                                                                   writeBackQueue:self.writeBackQueue];
-    }
-    if (self.orchestrationWindow == nil) {
-        NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1180, 720)
-                                                       styleMask:(NSWindowStyleMaskTitled |
-                                                                  NSWindowStyleMaskClosable |
-                                                                  NSWindowStyleMaskMiniaturizable |
-                                                                  NSWindowStyleMaskResizable)
-                                                         backing:NSBackingStoreBuffered
-                                                           defer:NO];
-        [window setTitle:@"Snowfell — Orchestration Center"];
-        [window setContentViewController:self.orchestrationController];
-        [self attachNavigationBarToWindow:window section:SFNavigationSectionOrchestration];
-        [window setMinSize:NSMakeSize(1180, 720)];
-        [window center];
-        self.orchestrationWindow = window;
-    }
-    [self.orchestrationController reloadOrchestration];
-    [self.orchestrationWindow makeKeyAndOrderFront:sender];
-    [NSApp activateIgnoringOtherApps:YES];
+    [self displaySection:SFNavigationSectionOrchestration];
 }
 
 // SF-T7 seam (palette routing): open the Orchestration Center and THEN
@@ -1081,37 +1032,7 @@
 #pragma mark - SF-T7 Roadmap (V5) + Command Palette (V6)
 
 - (IBAction)showRoadmap:(id)sender {
-    if (self.roadmapController == nil) {
-        self.roadmapController = [[RoadmapViewController alloc] initWithSnapshotStore:self.snapshotStore];
-        __weak AppDelegate *weakSelf = self;
-        self.roadmapController.itemActivationHandler = ^(DatedItem *datedItem) {
-            // The timeline row is a DatedItem; V3 wants the BoardItem —
-            // resolve through the store (the only snapshot door).
-            NSError *error = nil;
-            BoardItem *item = [weakSelf.snapshotStore itemWithNodeID:datedItem.nodeID error:&error];
-            if (item != nil) {
-                [weakSelf presentDetailForItem:item];
-            }
-        };
-    }
-    if (self.roadmapWindow == nil) {
-        NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1120, 660)
-                                                       styleMask:(NSWindowStyleMaskTitled |
-                                                                  NSWindowStyleMaskClosable |
-                                                                  NSWindowStyleMaskMiniaturizable |
-                                                                  NSWindowStyleMaskResizable)
-                                                         backing:NSBackingStoreBuffered
-                                                           defer:NO];
-        [window setTitle:@"Snowfell — Roadmap"];
-        [window setContentViewController:self.roadmapController];
-        [self attachNavigationBarToWindow:window section:SFNavigationSectionRoadmap];
-        [window setMinSize:NSMakeSize(760, 440)];
-        [window center];
-        self.roadmapWindow = window;
-    }
-    [self.roadmapController reloadRoadmap];
-    [self.roadmapWindow makeKeyAndOrderFront:sender];
-    [NSApp activateIgnoringOtherApps:YES];
+    [self displaySection:SFNavigationSectionRoadmap];
 }
 
 - (IBAction)showCommandPalette:(id)sender {
@@ -1160,6 +1081,9 @@
                                                                NSWindowStyleMaskUtilityWindow)
                                                       backing:NSBackingStoreBuffered
                                                         defer:NO];
+        // snowfell-test-6: auxiliary surface, re-shown from this
+        // property — lifetime never tied to its closed state.
+        [panel setReleasedWhenClosed:NO];
         [panel setTitle:@"Snowfell — Command Palette"];
         [panel setContentViewController:self.paletteController];
         [panel setFloatingPanel:YES];
@@ -1174,30 +1098,7 @@
 #pragma mark - SF-T11 Incidents (V11)
 
 - (IBAction)showIncidents:(id)sender {
-    if (self.incidentsController == nil) {
-        self.incidentsController = [[IncidentsViewController alloc]
-                                    initWithSnapshotStore:self.snapshotStore
-                                            dispatchStore:self.dispatchStore];
-    }
-    if (self.incidentsWindow == nil) {
-        NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1120, 680)
-                                                       styleMask:(NSWindowStyleMaskTitled |
-                                                                  NSWindowStyleMaskClosable |
-                                                                  NSWindowStyleMaskMiniaturizable |
-                                                                  NSWindowStyleMaskResizable)
-                                                         backing:NSBackingStoreBuffered
-                                                           defer:NO];
-        [window setTitle:@"Snowfell — Incidents"];
-        [window setContentViewController:self.incidentsController];
-        [self attachNavigationBarToWindow:window section:SFNavigationSectionIncidents];
-        [window setMinSize:NSMakeSize(1100, 680)];
-        [window center];
-        self.incidentsWindow = window;
-    }
-    self.incidentsController.snapshotVersion = self.snapshotStore.snapshotVersion;
-    [self.incidentsController reloadIncidents];
-    [self.incidentsWindow makeKeyAndOrderFront:sender];
-    [NSApp activateIgnoringOtherApps:YES];
+    [self displaySection:SFNavigationSectionIncidents];
 }
 
 #pragma mark - SF-T12f Storage (V12)
@@ -1214,34 +1115,13 @@
 }
 
 - (IBAction)showStorage:(id)sender {
-    if (self.storageController == nil) {
-        self.storageController = [[StorageViewController alloc]
-                                  initWithCloudServiceClient:self.cloudServiceClient];
-    }
-    if (self.storageWindow == nil) {
-        NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1120, 680)
-                                                       styleMask:(NSWindowStyleMaskTitled |
-                                                                  NSWindowStyleMaskClosable |
-                                                                  NSWindowStyleMaskMiniaturizable |
-                                                                  NSWindowStyleMaskResizable)
-                                                         backing:NSBackingStoreBuffered
-                                                           defer:NO];
-        [window setTitle:@"Snowfell — Storage"];
-        [window setContentViewController:self.storageController];
-        [self attachNavigationBarToWindow:window section:SFNavigationSectionStorage];
-        [window setMinSize:NSMakeSize(1100, 680)];
-        [window center];
-        self.storageWindow = window;
-    }
-    [self.storageController reloadStorage];
-    [self.storageWindow makeKeyAndOrderFront:sender];
-    [NSApp activateIgnoringOtherApps:YES];
+    [self displaySection:SFNavigationSectionStorage];
 }
 
-#pragma mark - snowfell-test-4 navigation bar + Updates lens (⌘9)
+#pragma mark - snowfell-test-6 single-window navigation (bar: test-4; model: test-6)
 
-// The one attach call every window creation site uses: NavigationBar
-// builds the shared toolbar; this window's own section starts selected.
+// The bar is attached ONCE, to the main window, at launch: NavigationBar
+// builds the shared toolbar; the Portfolio segment starts selected.
 - (void)attachNavigationBarToWindow:(NSWindow *)window section:(SFNavigationSection)section {
     [NavigationBar attachToWindow:window
                           section:section
@@ -1249,52 +1129,149 @@
                            action:@selector(navigationSegmentChanged:)];
 }
 
-// A segment press routes to the EXISTING show action for that lens —
-// the bar adds no navigation logic of its own.
+// THE navigation entry point (snowfell-test-6). Every route to a lens —
+// a segment press, a View-menu item / ⌘ key, the palette, a Portfolio
+// double-click — lands here, and here is all that happens: the lens's
+// controller is built lazily on first display, refreshed exactly as
+// its pre-test-6 show action refreshed it, and swapped into the ONE
+// main window as its content view controller; the window's title and
+// the bar's selected segment follow the visible lens. No window is
+// created, ordered front, or closed by a lens switch, ever — the
+// multi-window lifetime web that produced both the owner's "haphazard
+// and inconsistent" verdict and the test-5 Staged crash (files/11,
+// files/12) does not exist in this model.
+- (void)displaySection:(SFNavigationSection)section {
+    NSViewController *controller = nil;
+    NSString *title = nil;
+    switch (section) {
+        case SFNavigationSectionPortfolio:
+            controller = self.portfolioController;
+            title = @"Snowfell — Portfolio";
+            break;
+        case SFNavigationSectionBoard:
+            [self ensureBoardController];
+            controller = self.boardController;
+            title = @"Snowfell — Board";
+            break;
+        case SFNavigationSectionStaged:
+            if (self.queueController == nil) {
+                self.queueController = [[WriteBackQueueViewController alloc] initWithQueue:self.writeBackQueue
+                                                                                    client:self.githubClient];
+                __weak AppDelegate *weakSelf = self;
+                self.queueController.sendRequestedHandler = ^{
+                    [weakSelf sendPendingMutations:nil];
+                };
+            }
+            controller = self.queueController;
+            title = @"Snowfell — Staged Changes";
+            break;
+        case SFNavigationSectionOrchestration:
+            if (self.orchestrationController == nil) {
+                self.orchestrationController = [[OrchestrationViewController alloc] initWithSnapshotStore:self.snapshotStore
+                                                                                            dispatchStore:self.dispatchStore
+                                                                                           writeBackQueue:self.writeBackQueue];
+            }
+            controller = self.orchestrationController;
+            title = @"Snowfell — Orchestration Center";
+            break;
+        case SFNavigationSectionRoadmap:
+            if (self.roadmapController == nil) {
+                self.roadmapController = [[RoadmapViewController alloc] initWithSnapshotStore:self.snapshotStore];
+                __weak AppDelegate *weakSelf = self;
+                self.roadmapController.itemActivationHandler = ^(DatedItem *datedItem) {
+                    // The timeline row is a DatedItem; V3 wants the
+                    // BoardItem — resolve through the store (the only
+                    // snapshot door).
+                    NSError *error = nil;
+                    BoardItem *item = [weakSelf.snapshotStore itemWithNodeID:datedItem.nodeID error:&error];
+                    if (item != nil) {
+                        [weakSelf presentDetailForItem:item];
+                    }
+                };
+            }
+            controller = self.roadmapController;
+            title = @"Snowfell — Roadmap";
+            break;
+        case SFNavigationSectionIncidents:
+            if (self.incidentsController == nil) {
+                self.incidentsController = [[IncidentsViewController alloc]
+                                            initWithSnapshotStore:self.snapshotStore
+                                                    dispatchStore:self.dispatchStore];
+            }
+            controller = self.incidentsController;
+            title = @"Snowfell — Incidents";
+            break;
+        case SFNavigationSectionStorage:
+            if (self.storageController == nil) {
+                self.storageController = [[StorageViewController alloc]
+                                          initWithCloudServiceClient:self.cloudServiceClient];
+            }
+            controller = self.storageController;
+            title = @"Snowfell — Storage";
+            break;
+        case SFNavigationSectionUpdates:
+            if (self.updatesController == nil) {
+                self.updatesController = [[UpdatesViewController alloc] initWithSnapshotStore:self.snapshotStore];
+                __weak AppDelegate *weakSelf = self;
+                self.updatesController.checkRequestedHandler = ^{
+                    [weakSelf checkForSnapshotUpdate:nil];
+                };
+                self.updatesController.applyRequestedHandler = ^{
+                    [weakSelf applyStagedSnapshot:nil];
+                };
+            }
+            controller = self.updatesController;
+            title = @"Snowfell — Updates";
+            break;
+    }
+    if (controller == nil) {
+        return;
+    }
+    if ([self.mainWindow contentViewController] != controller) {
+        [self.mainWindow setContentViewController:controller];
+    }
+    // Refresh AFTER the swap, with the lens's view loaded and installed
+    // — the same refresh each pre-test-6 show action ran on every show.
+    switch (section) {
+        case SFNavigationSectionStaged:
+            [self.queueController reloadQueue];
+            break;
+        case SFNavigationSectionOrchestration:
+            [self.orchestrationController reloadOrchestration];
+            break;
+        case SFNavigationSectionRoadmap:
+            [self.roadmapController reloadRoadmap];
+            break;
+        case SFNavigationSectionIncidents:
+            self.incidentsController.snapshotVersion = self.snapshotStore.snapshotVersion;
+            [self.incidentsController reloadIncidents];
+            break;
+        case SFNavigationSectionStorage:
+            [self.storageController reloadStorage];
+            break;
+        case SFNavigationSectionUpdates:
+            [self refreshSnapshotSyncBlock];
+            break;
+        default:
+            break;
+    }
+    [self.mainWindow setTitle:title];
+    self.currentSection = section;
+    [NavigationBar selectSection:section inWindow:self.mainWindow];
+    [self.mainWindow makeKeyAndOrderFront:nil];
+    [NSApp activateIgnoringOtherApps:YES];
+}
+
+// A segment press names a section and nothing else — the bar adds no
+// navigation logic of its own, and (test-6) neither does the routing:
+// every segment lands in displaySection: on the one window.
 - (IBAction)navigationSegmentChanged:(id)sender {
     NSSegmentedControl *control = (NSSegmentedControl *)sender;
-    switch ([control selectedSegment]) {
-        case SFNavigationSectionPortfolio:    [self showPortfolio:sender]; break;
-        case SFNavigationSectionBoard:        [self showBoard:sender]; break;
-        case SFNavigationSectionStaged:       [self showWriteBackQueue:sender]; break;
-        case SFNavigationSectionOrchestration: [self showOrchestrationCenter:sender]; break;
-        case SFNavigationSectionRoadmap:      [self showRoadmap:sender]; break;
-        case SFNavigationSectionIncidents:    [self showIncidents:sender]; break;
-        case SFNavigationSectionStorage:      [self showStorage:sender]; break;
-        case SFNavigationSectionUpdates:      [self showUpdates:sender]; break;
-        default: break;
-    }
+    [self displaySection:(SFNavigationSection)[control selectedSegment]];
 }
 
 - (IBAction)showUpdates:(id)sender {
-    if (self.updatesController == nil) {
-        self.updatesController = [[UpdatesViewController alloc] initWithSnapshotStore:self.snapshotStore];
-        __weak AppDelegate *weakSelf = self;
-        self.updatesController.checkRequestedHandler = ^{
-            [weakSelf checkForSnapshotUpdate:nil];
-        };
-        self.updatesController.applyRequestedHandler = ^{
-            [weakSelf applyStagedSnapshot:nil];
-        };
-    }
-    if (self.updatesWindow == nil) {
-        NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 680, 340)
-                                                       styleMask:(NSWindowStyleMaskTitled |
-                                                                  NSWindowStyleMaskClosable |
-                                                                  NSWindowStyleMaskMiniaturizable |
-                                                                  NSWindowStyleMaskResizable)
-                                                         backing:NSBackingStoreBuffered
-                                                           defer:NO];
-        [window setTitle:@"Snowfell — Updates"];
-        [window setContentViewController:self.updatesController];
-        [self attachNavigationBarToWindow:window section:SFNavigationSectionUpdates];
-        [window setMinSize:NSMakeSize(560, 300)];
-        [window center];
-        self.updatesWindow = window;
-    }
-    [self refreshSnapshotSyncBlock];
-    [self.updatesWindow makeKeyAndOrderFront:sender];
-    [NSApp activateIgnoringOtherApps:YES];
+    [self displaySection:SFNavigationSectionUpdates];
 }
 
 // The primary line every staging confirm carries, in the owner's
@@ -1413,7 +1390,7 @@
         [alert setInformativeText:[NSString stringWithFormat:
                                    @"The snapshot has no status choices recorded for this board (%@). Nothing was staged.",
                                    (error != nil) ? error.localizedDescription : @"option not found"]];
-        [alert beginSheetModalForWindow:self.boardWindow completionHandler:nil];
+        [alert beginSheetModalForWindow:self.mainWindow completionHandler:nil];
         completion(NO);
         return;
     }
@@ -1421,7 +1398,7 @@
                         @"updateProjectV2ItemFieldValue will set the Status of “%@” on board “%@” from “%@” to “%@”.",
                         item.title, board.title,
                         (item.statusName != nil) ? item.statusName : @"(no status)", optionName];
-    [self confirmEnqueueOnWindow:self.boardWindow
+    [self confirmEnqueueOnWindow:self.mainWindow
                      messageText:[NSString stringWithFormat:@"Move “%@” to %@ on %@?", item.title, optionName, board.title]
                 informativeText:[NSString stringWithFormat:@"Status changes from “%@” to “%@”.\n\n%@",
                                  (item.statusName != nil) ? item.statusName : @"(no status)", optionName,
@@ -1444,7 +1421,7 @@
                                   boardID:board.nodeID
                                    itemID:item.nodeID
                                   payload:payload
-                              sheetWindow:self.boardWindow];
+                              sheetWindow:self.mainWindow];
         completion(enqueued);
     }];
 }
@@ -1471,7 +1448,7 @@
     NSString *plainClause = (optionName != nil)
         ? [NSString stringWithFormat:@"A new draft item with Status “%@”.", optionName]
         : @"A new draft item.";
-    [self confirmEnqueueOnWindow:self.boardWindow
+    [self confirmEnqueueOnWindow:self.mainWindow
                      messageText:[NSString stringWithFormat:@"Add “%@” to %@?", title, board.title]
                 informativeText:[NSString stringWithFormat:@"%@\n\n%@", plainClause, [self writeBackConfirmPreamble]]
                     detailsText:[self writeBackConfirmDetailsForEffect:effect]
@@ -1484,7 +1461,7 @@
                   boardID:board.nodeID
                    itemID:nil
                   payload:payload
-              sheetWindow:self.boardWindow];
+              sheetWindow:self.mainWindow];
     }];
 }
 
@@ -1531,7 +1508,7 @@
         NSAlert *alert = [[NSAlert alloc] init];
         [alert setMessageText:@"Sending is off in this build"];
         [alert setInformativeText:@"This build can stage changes but cannot send them, whatever the Keychain holds. Staged changes stay in the queue on this Mac, unchanged, until an armed build sends them."];
-        [alert beginSheetModalForWindow:(self.queueWindow != nil && [self.queueWindow isVisible]) ? self.queueWindow : self.mainWindow
+        [alert beginSheetModalForWindow:self.mainWindow
                       completionHandler:nil];
         [self.queueController reloadQueue];
         return;
@@ -1679,13 +1656,16 @@
      @"never is). The lens starts/stops the bundled helper and pairs "
      @"the operator token into the Keychain on first use; without a "
      @"token it shows the pairing pane instead of data.\n\n"
-     @"Navigation bar + Updates (snowfell-test-4): every window "
-     @"carries the same navigation bar — Portfolio, Board, Staged, "
-     @"Orchestration, Roadmap, Incidents, Storage, Updates — and one "
-     @"click moves between lenses. View ▸ Updates (⌘9) shows the "
-     @"running snapshot next to the published one, in plain terms, "
-     @"with the Check Now and Apply Update buttons; snapshot sync "
-     @"itself works exactly as it did before."];
+     @"Navigation bar + Updates (snowfell-test-4; single-window model "
+     @"snowfell-test-6): one window carries the navigation bar — "
+     @"Portfolio, Board, Staged, Orchestration, Roadmap, Incidents, "
+     @"Storage, Updates — and clicking a segment switches the lens in "
+     @"that same window; the filled segment always names the lens on "
+     @"screen, and the View menu's ⌘1–⌘9 items land on the same "
+     @"lenses. View ▸ Updates (⌘9) shows the running snapshot next to "
+     @"the published one, in plain terms, with the Check Now and "
+     @"Apply Update buttons; snapshot sync itself works exactly as "
+     @"it did before."];
     [alert beginSheetModalForWindow:self.mainWindow completionHandler:nil];
 }
 

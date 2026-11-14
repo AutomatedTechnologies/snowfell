@@ -1,14 +1,15 @@
-// NavigationBar — the ONE shared builder of Snowfell's navigation bar
+// NavigationBar — the ONE builder of Snowfell's navigation bar
 // (snowfell-test-4; owner's directive 2026-11-13: "Snowfell needs a
-// navigation bar"). Every app window carries the same NSToolbar
-// (identifier SnowfellNavigationToolbar) whose single custom item hosts
-// an NSSegmentedControl with the eight lenses in View-menu (⌘) order.
-// AppDelegate supplies the target + action once per window; the bar
-// itself owns no navigation logic — a segment press is forwarded to
-// AppDelegate's navigationSegmentChanged:, which maps the segment to
-// the existing show actions. Monochrome/native styling only: no custom
-// drawing, no images. The ⌘K palette panel is excluded by design (it is
-// a transient panel, not a lens window).
+// navigation bar"). snowfell-test-6 (owner verdict 2026-11-14) put the
+// bar on the ONE main window only: its NSToolbar (identifier
+// SnowfellNavigationToolbar) hosts a single custom item with an
+// NSSegmentedControl carrying the eight lenses in View-menu (⌘) order,
+// and AppDelegate switches the window's content view controller in
+// place per segment. Auxiliary surfaces (Item Detail, Preferences, the
+// ⌘K palette panel) carry no bar. AppDelegate supplies the target +
+// action once; the bar itself owns no navigation logic — a segment
+// press is forwarded to AppDelegate's navigationSegmentChanged:.
+// Monochrome/native styling only: no custom drawing, no images.
 #import <AppKit/AppKit.h>
 
 NS_ASSUME_NONNULL_BEGIN
