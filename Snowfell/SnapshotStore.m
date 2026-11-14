@@ -290,15 +290,33 @@ static NSString *ColumnNullableText(sqlite3_stmt *statement, int column) {
         hasBoardState = (sqlite3_step(probe) == SQLITE_ROW);
     }
     sqlite3_finalize(probe);
+    // GitHub-updated stamp (schema v10, sf_boards.gh_updated_at — the
+    // Portfolio "Updated" column's data source): present only in
+    // snapshots at v10-0058 and later. Presence-guarded the same way:
+    // a zero-row prepare succeeds iff the column exists; older
+    // snapshots select NULL and the column stays hidden — the value
+    // is never the registry row's uniform bookkeeping stamp.
+    BOOL hasGhUpdatedAt = NO;
+    sqlite3_stmt *columnProbe = NULL;
+    if (sqlite3_prepare_v2(_db, "SELECT gh_updated_at FROM sf_boards LIMIT 0",
+                           -1, &columnProbe, NULL) == SQLITE_OK) {
+        hasGhUpdatedAt = YES;
+    }
+    sqlite3_finalize(columnProbe);
     NSString *sqlString = hasBoardState
-        ? @"SELECT b.gh_node_id, b.title, b.owner_login, b.owner_type, b.number, "
+        ? [NSString stringWithFormat:
+          @"SELECT b.gh_node_id, b.title, b.owner_login, b.owner_type, b.number, "
           @"b.short_description, b.closed, b.archived_hidden, b.url, b.item_count, "
-          @"s.derived_state, s.items_total, s.items_terminal, s.terminal_option_name "
+          @"s.derived_state, s.items_total, s.items_terminal, s.terminal_option_name, "
+          @"%@ "
           @"FROM sf_boards b LEFT JOIN sf_board_state s ON s.board_id = b.gh_node_id "
-          @"ORDER BY b.closed ASC, b.archived_hidden ASC, b.owner_type DESC, b.number ASC"
-        : @"SELECT gh_node_id, title, owner_login, owner_type, number, "
-          @"short_description, closed, archived_hidden, url, item_count "
-          @"FROM sf_boards ORDER BY closed ASC, archived_hidden ASC, owner_type DESC, number ASC";
+          @"ORDER BY b.closed ASC, b.archived_hidden ASC, b.owner_type DESC, b.number ASC",
+          hasGhUpdatedAt ? @"b.gh_updated_at" : @"NULL"]
+        : [NSString stringWithFormat:
+          @"SELECT gh_node_id, title, owner_login, owner_type, number, "
+          @"short_description, closed, archived_hidden, url, item_count, %@ "
+          @"FROM sf_boards ORDER BY closed ASC, archived_hidden ASC, owner_type DESC, number ASC",
+          hasGhUpdatedAt ? @"gh_updated_at" : @"NULL"];
     const char *sql = [sqlString UTF8String];
     sqlite3_stmt *statement = NULL;
     if (sqlite3_prepare_v2(_db, sql, -1, &statement, NULL) != SQLITE_OK) {
@@ -331,6 +349,13 @@ static NSString *ColumnNullableText(sqlite3_stmt *statement, int column) {
             const unsigned char *termName = sqlite3_column_text(statement, 13);
             board.terminalOptionName = (termName != NULL)
                 ? [NSString stringWithUTF8String:(const char *)termName] : nil;
+        }
+        // The gh_updated_at expression rides LAST in both variants
+        // (index 14 with board state, 10 without); NULL on pre-v10
+        // snapshots and for any board the crawl has not stamped.
+        NSInteger ghIndex = hasBoardState ? 14 : 10;
+        if (sqlite3_column_type(statement, (int)ghIndex) != SQLITE_NULL) {
+            board.ghUpdatedAt = ColumnText(statement, (int)ghIndex);
         }
         board.statusSummary = [self statusSummaryForBoard:board.nodeID];
         [boards addObject:board];

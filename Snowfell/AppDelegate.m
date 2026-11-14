@@ -732,6 +732,33 @@
             (self.stagedDatabasePath != nil && self.stagedManifestPath != nil);
         [self.updatesController refreshUpdates];
     }
+    // snowfell-test-5 freshness surfacing (freshness remainder, board
+    // #78): the SAME session state drives two glanceable surfaces —
+    // a dot on the bar's Updates segment (every window) and a line in
+    // the Portfolio header naming the gap. Both clear the moment the
+    // state does (up to date, or the staged update applied).
+    {
+        BOOL staged = (self.stagedDatabasePath != nil && self.stagedManifestPath != nil);
+        NSString *servedVersion = self.servedManifest[@"version"];
+        NSString *runningVersion = self.snapshotStore.snapshotVersion;
+        BOOL gap = staged || (servedVersion != nil && runningVersion != nil &&
+                              ![servedVersion isEqualToString:runningVersion]);
+        for (NSWindow *window in [NSApp windows]) {
+            [NavigationBar setUpdatesBadgeVisible:gap inWindow:window];
+        }
+        if (self.portfolioController != nil) {
+            if (staged) {
+                self.portfolioController.freshnessText = [NSString stringWithFormat:
+                    @"Update %@ staged — Apply Update in the Updates lens",
+                    servedVersion ?: runningVersion ?: @""];
+            } else if (gap) {
+                self.portfolioController.freshnessText = [NSString stringWithFormat:
+                    @"Served %@ — an update is published", servedVersion];
+            } else {
+                self.portfolioController.freshnessText = nil;
+            }
+        }
+    }
     if (self.preferencesWindow == nil) {
         return;
     }

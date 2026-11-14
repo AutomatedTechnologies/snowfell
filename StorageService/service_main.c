@@ -86,6 +86,27 @@ int main(void) {
     }
     const char *bind_addr = getenv("SNOWFELL_CLOUD_BIND");
     if (!bind_addr || !bind_addr[0]) bind_addr = "127.0.0.1";
+    /* M-09 hardening (snowfell-test-5; teardown register M-09,
+     * coordinator ruling 2026-11-13): the designed posture is
+     * loopback-only. The default bind is 127.0.0.1 (above); a
+     * non-loopback bind requested via SNOWFELL_CLOUD_BIND is REFUSED
+     * unless the operator also sets SNOWFELL_CLOUD_ALLOW_REMOTE=1 —
+     * widening the listen surface takes two deliberate acts, never
+     * one stray environment value. The bound address is printed in
+     * the startup log line either way ("service started bind=..."). */
+    {
+        int is_loopback = (strcmp(bind_addr, "127.0.0.1") == 0 ||
+                           strcmp(bind_addr, "::1") == 0 ||
+                           strcmp(bind_addr, "localhost") == 0);
+        const char *allow_remote = getenv("SNOWFELL_CLOUD_ALLOW_REMOTE");
+        if (!is_loopback &&
+            !(allow_remote && strcmp(allow_remote, "1") == 0)) {
+            fprintf(stderr, "snowfell-storage: refusing non-loopback bind %s "
+                    "(set SNOWFELL_CLOUD_ALLOW_REMOTE=1 to override)\n",
+                    bind_addr);
+            return 1;
+        }
+    }
     long port = 8471;
     const char *port_env = getenv("SNOWFELL_CLOUD_PORT");
     if (port_env && port_env[0]) {

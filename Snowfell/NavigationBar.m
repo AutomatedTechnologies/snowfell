@@ -54,6 +54,26 @@ static const void *SFNavigationBarBuilderKey = &SFNavigationBarBuilderKey;
     [bar.segmentedControl setSelectedSegment:section];
 }
 
++ (void)setUpdatesBadgeVisible:(BOOL)visible inWindow:(NSWindow *)window {
+    NavigationBar *bar = objc_getAssociatedObject(window, SFNavigationBarBuilderKey);
+    if (bar == nil) {
+        return;
+    }
+    NSString *label = visible ? @"Updates ●" : @"Updates";
+    if ([[bar.segmentedControl labelForSegment:SFNavigationSectionUpdates] isEqualToString:label]) {
+        return;
+    }
+    [bar.segmentedControl setLabel:label forSegment:SFNavigationSectionUpdates];
+    [bar.segmentedControl sizeToFit];
+    for (NSToolbarItem *item in [[window toolbar] items]) {
+        if ([[item itemIdentifier] isEqualToString:SFNavigationSegmentsItemIdentifier]) {
+            NSSize size = bar.segmentedControl.frame.size;
+            [item setMinSize:size];
+            [item setMaxSize:size];
+        }
+    }
+}
+
 #pragma mark - NSToolbarDelegate
 
 - (NSToolbarItem *)toolbar:(NSToolbar *)toolbar

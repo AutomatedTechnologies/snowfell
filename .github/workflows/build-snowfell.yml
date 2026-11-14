@@ -56,7 +56,7 @@ jobs:
             clang.log
             service-build.log
 
-      # Build identity is FIXED at snowfell-test-4 for this build line:
+      # Build identity is FIXED at snowfell-test-5 for this build line:
       # github.run_number counts CI attempts, not builds. The attempt
       # number stays visible in the release notes stamp. (test-2 note:
       # its attempt 2 failed at the storage-service step on strict-C99
@@ -65,7 +65,7 @@ jobs:
         if: success()
         run: |
           APP="Snowfell.app"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion snowfell-test-4" "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion snowfell-test-5" "$APP/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Contents/Info.plist"
@@ -87,12 +87,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           BUILT=$(date -u '+%Y-%m-%d %H:%M UTC')
-          NOTES="Internal test build of Snowfell, the Detroit Automation Academy's Jira-style board app over GitHub Projects for macOS High Sierra: every Academy project board in one native window — a navigation bar on every window, portfolio, per-board kanban in each board's own status vocabulary, item detail, orchestration queue (staging-only in this build), roadmap, command palette, incidents lens, updates lens — reading a pinned, hash-verified registry snapshot, fully offline. Write-back is compiled OFF in this build. Publisher: Detroit Automation Academy. Unsigned test build — not gate-cleared, not yet verified on the High Sierra rig; install from the Distro catalog (testing).
+          NOTES="Internal test build of Snowfell, the Detroit Automation Academy's Jira-style board app over GitHub Projects for macOS High Sierra: every Academy project board in one native window — a navigation bar on every window, portfolio with each board's own GitHub updated date, per-board kanban in each board's own status vocabulary, item detail, orchestration queue (staging-only in this build), roadmap, command palette, incidents lens, updates lens — reading a pinned, hash-verified registry snapshot, fully offline. Write-back is compiled OFF in this build. Publisher: Detroit Automation Academy. Unsigned test build — not gate-cleared, not yet verified on the High Sierra rig; install from the Distro catalog (testing).
 
-          NEW IN snowfell-test-4 (owner directive of 2026-11-13: \"Snowfell needs a navigation bar\"): (1) every Snowfell window now carries the same navigation bar — one shared NavigationBar toolbar with eight segments (Portfolio · Board · Staged · Orchestration · Roadmap · Incidents · Storage · Updates) wired to the app's existing View-menu and Cmd-key paths; the filled segment names the window you are in, so the eight lenses are finally visible and reachable from anywhere in the app; (2) a new Updates lens (Cmd-9) gives snapshot state a home: the running snapshot beside the served snapshot with a plain gap line, the session's sync status, and Check Now / Apply Update as separate presses — the SF-T6 discipline is unchanged and the lens adds no network code; (3) the bundled registry snapshot advances from v8-0041 to v9-0049 (83 boards, 763 items, 5 incidents), size- and SHA-256-verified against the served manifest at packaging. Everything test-3 shipped carries over unchanged: the decluttered staging language with the technical record behind Details, menu labels that follow state, the interface uplift to the decision-gate baseline, the SF-T12 storage domain (SnowfellStorageService in Contents/MacOS, Storage lens on Cmd-8), and the board-state derivation presentation. Safety properties are unchanged: write-back remains compiled OFF, and nothing sends without the owner's explicit Send Pending Changes in an armed build.
+          NEW IN snowfell-test-5 (Snowfell development coordinator build under the owner's delegation directive of 2026-11-13, 22:40 EST): (1) the Portfolio gains its Updated column — every board row now shows GitHub's own updated date for that project, read from the new sf_boards.gh_updated_at column carried by registry snapshot v10-0058 (schema 10); the column removes itself when a snapshot carries no per-board stamps, so older snapshots render exactly as before; (2) snapshot freshness is glanceable: the navigation bar's Updates segment gains a filled-dot marker whenever the served snapshot differs from the running one or an update is staged, and the Portfolio header names the staged or served update in words beside the running snapshot; (3) M-09 hardening of SnowfellStorageService: the service still binds 127.0.0.1 by default, and now refuses any non-loopback bind unless SNOWFELL_CLOUD_ALLOW_REMOTE=1 is also set — widening the listen surface takes two deliberate acts; the bound address is printed in the startup log either way, and a new bind-clamp test driver covers the refusal; (4) the bundled registry snapshot advances from v9-0049 to v10-0058 (83 boards, 763 items, 5 incidents), size- and SHA-256-verified against the canonical registry at packaging. Everything test-4 shipped carries over: the navigation bar on every window, the Updates lens, the decluttered staging language, the SF-T12 storage domain, and the board-state derivation presentation. Safety properties are unchanged: write-back remains compiled OFF, and nothing sends without the owner's explicit Send Pending Changes in an armed build.
 
-          BUILD STAMP — Built: $BUILT · Build: snowfell-test-4 (CI run ${{ github.run_id }}, attempt ${{ github.run_number }}) · Agent: Minion · Authorized: J. Spencer Smith, directive of 2026-11-13 (navigation bar + Updates lens, 15-minute dev cadence)"
-          gh release create snowfell-test-4 Snowfell-test.zip \
+          BUILD STAMP — Built: $BUILT · Build: snowfell-test-5 (CI run ${{ github.run_id }}, attempt ${{ github.run_number }}) · Agent: Minion · Authorized: J. Spencer Smith, directive of 2026-11-13 (Snowfell backlog continuation, coordinator full delegation 22:40 EST)"
+          gh release create snowfell-test-5 Snowfell-test.zip \
             --prerelease \
-            --title "Snowfell test build 4" \
+            --title "Snowfell test build 5" \
             --notes "$NOTES"

@@ -22,6 +22,15 @@ NS_ASSUME_NONNULL_BEGIN
 // fires this with the chosen board — AppDelegate opens V1 for it.
 @property (nonatomic, copy, nullable) void (^boardActivationHandler)(BoardSummary *board);
 
+// Snapshot-freshness line (snowfell-test-5, freshness remainder,
+// board #78): AppDelegate pushes the gap text here on every sync step
+// — e.g. "Served v10-0059 — an update is published" or "Update staged
+// — Apply Update in the Updates lens". nil/empty = no gap to name;
+// the header's sub-line then carries the snapshot line alone. This is
+// the Portfolio half of the freshness surfacing; the Updates lens
+// keeps the full state.
+@property (nonatomic, copy, nullable) NSString *freshnessText;
+
 - (instancetype)initWithSnapshotStore:(SnapshotStore *)store;
 
 // The board under the current table selection, or nil when none.

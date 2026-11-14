@@ -49,6 +49,15 @@ extern NSToolbarItemIdentifier const SFNavigationSegmentsItemIdentifier;
 // the window. No-op when the window carries no navigation bar.
 + (void)selectSection:(SFNavigationSection)section inWindow:(NSWindow *)window;
 
+// Freshness badge (snowfell-test-5, freshness remainder, board #78):
+// when the session's sync state names a gap (a served snapshot newer
+// than the running one, or a verified update staged), the Updates
+// segment's label gains a filled dot — "Updates ●" — on every window;
+// when the state clears, the plain label returns. The badge is a
+// label state, not a parallel control: the segment still fires the
+// same action. No-op when the window carries no navigation bar.
++ (void)setUpdatesBadgeVisible:(BOOL)visible inWindow:(NSWindow *)window;
+
 @end
 
 NS_ASSUME_NONNULL_END

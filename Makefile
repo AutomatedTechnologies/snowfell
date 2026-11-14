@@ -80,12 +80,12 @@ HEADERS = \
 
 # startup-sound.wav: byte-identical to the SDS-10 library master,
 # SHA-256 07a113244c6b432b22954a089ce519bd239311b14a48f26ae85214ed8c25b09a.
-# registry.db + snapshot-manifest.json: registry snapshot v9-0049,
-# SHA-256 4bd7ec4e4499eeaaefef8c1b3d57fc78591c97f90f5768720af7f07e625d2328
-# (schema 9 — includes the §12 incident domain and the SF-T12 sf_cloud_*
-# catalog projection; refreshed at the snowfell-test-4 repack from the
-# served snapshot of record; SnapshotSync can advance it further at
-# runtime).
+# registry.db + snapshot-manifest.json: registry snapshot v10-0058,
+# SHA-256 3af8e8a8551544931d39cff1899bf7c67a907cb8c510f15cafcf6b3ed37e3dd1
+# (schema 10 — adds sf_boards.gh_updated_at, the Portfolio Updated
+# column's data source; refreshed at the snowfell-test-5 repack from
+# the canonical registry bytes (blobs identical to the site publish);
+# SnapshotSync can advance it further at runtime).
 RESOURCES = \
 	Snowfell/Resources/startup-sound.wav \
 	Snowfell/Resources/registry.db \

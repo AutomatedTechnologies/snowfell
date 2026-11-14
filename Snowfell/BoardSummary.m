@@ -19,6 +19,27 @@
     return self.closed ? @"Closed" : @"Open";
 }
 
+- (NSString *)updatedDisplay {
+    if ([self.ghUpdatedAt length] == 0) {
+        return nil;
+    }
+    static NSDateFormatter *parser = nil;
+    static NSDateFormatter *renderer = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        parser = [[NSDateFormatter alloc] init];
+        [parser setLocale:[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]];
+        [parser setTimeZone:[NSTimeZone timeZoneForSecondsFromGMT:0]];
+        [parser setDateFormat:@"yyyy-MM-dd'T'HH:mm:ss'Z'"];
+        renderer = [[NSDateFormatter alloc] init];
+        [renderer setLocale:[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]];
+        [renderer setTimeZone:[NSTimeZone timeZoneForSecondsFromGMT:0]];
+        [renderer setDateFormat:@"MMM d, yyyy"];
+    });
+    NSDate *date = [parser dateFromString:self.ghUpdatedAt];
+    return (date != nil) ? [renderer stringFromDate:date] : nil;
+}
+
 - (NSString *)githubStateDisplay {
     return self.closed ? @"GitHub: Closed" : @"GitHub: Open";
 }

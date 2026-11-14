@@ -194,14 +194,19 @@ typedef NS_ENUM(NSInteger, PortfolioHealth) {
     [_tableView setTarget:self];
     [_tableView setDoubleAction:@selector(tableViewDoubleClicked:)];
 
+    // snowfell-test-5: the baseline's UPDATED column is restored —
+    // its data source (sf_boards.gh_updated_at, schema v10) now
+    // exists. Widths rebalance to the same 1026 total: board and
+    // vocabulary yield the 92 the column takes.
     NSArray *columns = @[
         @{@"id": @"health", @"title": @"",              @"width": @28},
-        @{@"id": @"board",  @"title": @"BOARD",         @"width": @300},
-        @{@"id": @"owner",  @"title": @"OWNER",         @"width": @140},
+        @{@"id": @"board",  @"title": @"BOARD",         @"width": @284},
+        @{@"id": @"owner",  @"title": @"OWNER",         @"width": @132},
         @{@"id": @"state",  @"title": @"STATE",         @"width": @84},
         @{@"id": @"items",  @"title": @"ITEMS",         @"width": @56},
         @{@"id": @"split",  @"title": @"OPEN / DONE",   @"width": @88},
-        @{@"id": @"status", @"title": @"VOCABULARY",    @"width": @330},
+        @{@"id": @"updated", @"title": @"UPDATED",      @"width": @92},
+        @{@"id": @"status", @"title": @"VOCABULARY",    @"width": @262},
     ];
     for (NSDictionary *columnSpec in columns) {
         NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:columnSpec[@"id"]];
@@ -233,7 +238,40 @@ typedef NS_ENUM(NSInteger, PortfolioHealth) {
     [self applyFilters];
 }
 
+// The UPDATED column exists only when the loaded snapshot carries
+// the data (schema v10+): on older snapshots it is removed outright —
+// a column of dashes would read as data, and it would not be.
+- (void)refreshUpdatedColumnVisibility {
+    NSTableColumn *column = [_tableView tableColumnWithIdentifier:@"updated"];
+    BOOL anyStamped = NO;
+    for (BoardSummary *board in self.allBoards) {
+        if ([board.ghUpdatedAt length] > 0) {
+            anyStamped = YES;
+            break;
+        }
+    }
+    if (anyStamped && column == nil) {
+        NSTableColumn *restored = [[NSTableColumn alloc] initWithIdentifier:@"updated"];
+        NSTableHeaderCell *header = [restored headerCell];
+        [header setStringValue:@"UPDATED"];
+        [header setFont:[AcademyTheme capsHeaderFont]];
+        [header setTextColor:[AcademyTheme inkSecondaryColor]];
+        [restored setWidth:92];
+        [_tableView addTableColumn:restored];
+        // Keep the baseline order: UPDATED sits before VOCABULARY.
+        NSInteger updatedIndex = [[_tableView tableColumns] indexOfObject:restored];
+        NSInteger statusIndex = [[_tableView tableColumns] indexOfObject:
+            [_tableView tableColumnWithIdentifier:@"status"]];
+        if (statusIndex != NSNotFound && updatedIndex > statusIndex) {
+            [_tableView moveColumn:updatedIndex toColumn:statusIndex];
+        }
+    } else if (!anyStamped && column != nil) {
+        [_tableView removeTableColumn:column];
+    }
+}
+
 - (void)applyFilters {
+    [self refreshUpdatedColumnVisibility];
     NSMutableArray<BoardSummary *> *visible = [NSMutableArray array];
     for (BoardSummary *board in self.allBoards) {
         if (board.archivedHidden && !self.showArchivedBoards) {
@@ -325,6 +363,11 @@ typedef NS_ENUM(NSInteger, PortfolioHealth) {
     self.rowModels = models;
 }
 
+- (void)setFreshnessText:(NSString *)freshnessText {
+    _freshnessText = [freshnessText copy];
+    [self updateSummary];
+}
+
 - (void)updateSummary {
     SnapshotStore *store = self.snapshotStore;
     if (store.snapshotPath == nil) {
@@ -341,11 +384,18 @@ typedef NS_ENUM(NSInteger, PortfolioHealth) {
     [_titleField setStringValue:[NSString stringWithFormat:
                                   @"Portfolio — %lu boards · %ld items",
                                   (unsigned long)[self.allBoards count], (long)itemTotal]];
-    [_subField setStringValue:[NSString stringWithFormat:
+    NSString *subLine = [NSString stringWithFormat:
                                @"%lu shown · snapshot %@ · SHA-256 %@…",
                                (unsigned long)[self.visibleBoards count],
                                store.snapshotVersion,
-                               [store.snapshotSHA256 substringToIndex:MIN((NSUInteger)12, [store.snapshotSHA256 length])]]];
+                               [store.snapshotSHA256 substringToIndex:MIN((NSUInteger)12, [store.snapshotSHA256 length])]];
+    // Freshness remainder (snowfell-test-5): when the session's sync
+    // state names a gap, the header names it too — the owner should
+    // not have to open the Updates lens to learn an update exists.
+    if ([self.freshnessText length] > 0) {
+        subLine = [subLine stringByAppendingFormat:@" · %@", self.freshnessText];
+    }
+    [_subField setStringValue:subLine];
 }
 
 - (void)reloadPortfolio {
@@ -453,6 +503,12 @@ typedef NS_ENUM(NSInteger, PortfolioHealth) {
     } else if ([identifier isEqualToString:@"split"]) {
         text = model[@"split"];
         color = [AcademyTheme inkSecondaryColor];
+    } else if ([identifier isEqualToString:@"updated"]) {
+        // GitHub's own last-activity day for the project (schema v10
+        // data); "—" for any board the crawl has not stamped.
+        text = board.updatedDisplay ?: @"—";
+        font = [AcademyTheme metaFont];
+        color = [AcademyTheme inkTertiaryColor];
     } else if ([identifier isEqualToString:@"status"]) {
         text = model[@"vocabulary"];
         font = [AcademyTheme metaFont];
@@ -501,6 +557,15 @@ typedef NS_ENUM(NSInteger, PortfolioHealth) {
             return [NSString stringWithFormat:@"%@\n%@", board.shortDescription, board.url];
         }
         return board.url;
+    }
+    if ([[tableColumn identifier] isEqualToString:@"updated"]) {
+        // The cell shows the day; the tooltip carries GitHub's full
+        // stamp, labeled as what it is.
+        BoardSummary *board = self.visibleBoards[(NSUInteger)row];
+        if ([board.ghUpdatedAt length] > 0) {
+            return [NSString stringWithFormat:@"GitHub project updated: %@", board.ghUpdatedAt];
+        }
+        return nil;
     }
     return nil;
 }

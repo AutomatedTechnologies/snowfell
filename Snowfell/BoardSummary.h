@@ -34,8 +34,19 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) NSInteger derivedItemsTotal;      // sf_board_state.items_total
 @property (nonatomic, assign) NSInteger derivedItemsTerminal;   // sf_board_state.items_terminal
 @property (nonatomic, copy, nullable) NSString *terminalOptionName;
+// GitHub's own last-activity stamp for the project (sf_boards
+// .gh_updated_at, schema v10 — the data source the decision-gate
+// baseline's Portfolio "Updated" column was dropped for want of at
+// snowfell-test-2). Raw ISO-8601 UTC as GitHub serves it; nil on
+// pre-v10 snapshots (no column) and the column then stays hidden —
+// never the registry row's bookkeeping stamp, which is uniform.
+// Added snowfell-test-5 (UI-uplift remainder, board #78).
+@property (nonatomic, copy, nullable) NSString *ghUpdatedAt;
 
 @property (nonatomic, readonly) NSString *ownerDisplay;  // "smit4786 (user)"
+// "Nov 13, 2026" rendered from ghUpdatedAt (its own calendar day,
+// UTC); nil when ghUpdatedAt is nil.
+@property (nonatomic, readonly, nullable) NSString *updatedDisplay;
 @property (nonatomic, readonly) NSString *stateDisplay;  // Complete | Open | Closed | Archived
 @property (nonatomic, readonly) NSString *githubStateDisplay;  // "GitHub: Open" | "GitHub: Closed"
 // Secondary detail for headers/tooltips, e.g.
