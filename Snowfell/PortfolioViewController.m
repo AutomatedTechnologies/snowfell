@@ -198,6 +198,10 @@ typedef NS_ENUM(NSInteger, PortfolioHealth) {
     // its data source (sf_boards.gh_updated_at, schema v10) now
     // exists. Widths rebalance to the same 1026 total: board and
     // vocabulary yield the 92 the column takes.
+    // snowfell-test-7: the GITHUB column takes 92 from VOCABULARY
+    // (same 1026 total) and carries the per-board "Open in GitHub"
+    // action — the URL itself has ridden in BoardSummary.url since
+    // SF-T2 and showed only as tooltip text until now.
     NSArray *columns = @[
         @{@"id": @"health", @"title": @"",              @"width": @28},
         @{@"id": @"board",  @"title": @"BOARD",         @"width": @284},
@@ -206,7 +210,8 @@ typedef NS_ENUM(NSInteger, PortfolioHealth) {
         @{@"id": @"items",  @"title": @"ITEMS",         @"width": @56},
         @{@"id": @"split",  @"title": @"OPEN / DONE",   @"width": @88},
         @{@"id": @"updated", @"title": @"UPDATED",      @"width": @92},
-        @{@"id": @"status", @"title": @"VOCABULARY",    @"width": @262},
+        @{@"id": @"status", @"title": @"VOCABULARY",    @"width": @170},
+        @{@"id": @"github", @"title": @"GITHUB",        @"width": @92},
     ];
     for (NSDictionary *columnSpec in columns) {
         NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:columnSpec[@"id"]];
@@ -433,6 +438,26 @@ typedef NS_ENUM(NSInteger, PortfolioHealth) {
     }
 }
 
+// snowfell-test-7: the GITHUB column's per-row action. The row is
+// resolved from the clicked button's position in the table (never a
+// stored row index — reuse and filtering cannot stale it), and the
+// stored sf_boards.url opens verbatim in the owner's default
+// browser via NSWorkspace.
+- (void)openBoardInGitHubClicked:(id)sender {
+    NSInteger row = [_tableView rowForView:(NSView *)sender];
+    if (row < 0 || row >= (NSInteger)[self.visibleBoards count]) {
+        return;
+    }
+    BoardSummary *board = self.visibleBoards[(NSUInteger)row];
+    if ([board.url length] == 0) {
+        return;
+    }
+    NSURL *url = [NSURL URLWithString:board.url];
+    if (url != nil) {
+        [[NSWorkspace sharedWorkspace] openURL:url];
+    }
+}
+
 #pragma mark - NSTableViewDataSource
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
@@ -464,6 +489,42 @@ typedef NS_ENUM(NSInteger, PortfolioHealth) {
         [dot setHealth:(PortfolioHealth)[model[@"health"] integerValue]];
         [dot setNeedsDisplay:YES];
         return dot;
+    }
+
+    if ([identifier isEqualToString:@"github"]) {
+        // snowfell-test-7: the row's own GitHub Projects page, opened
+        // in the owner's browser session via NSWorkspace (a private
+        // board 404s outside that session; the app hands the browser
+        // the stored sf_boards.url verbatim — no URL is constructed).
+        // Presence-guarded at the value level: a board whose snapshot
+        // row carries no URL gets no button.
+        PortfolioTextCellView *cell = [tableView makeViewWithIdentifier:@"GitHubCell" owner:self];
+        NSButton *button = nil;
+        if (cell == nil) {
+            CGFloat width = [tableColumn width];
+            cell = [[PortfolioTextCellView alloc] initWithFrame:NSMakeRect(0, 0, width, 38)];
+            [cell setIdentifier:@"GitHubCell"];
+            button = [[NSButton alloc] initWithFrame:NSMakeRect(0, 9, width, 20)];
+            [button setBordered:NO];
+            [button setFont:[AcademyTheme metaFont]];
+            [button setAttributedTitle:[[NSAttributedString alloc]
+                initWithString:@"Open in GitHub"
+                    attributes:@{NSFontAttributeName: [AcademyTheme metaFont],
+                                 NSForegroundColorAttributeName: [AcademyTheme inkSecondaryColor]}]];
+            [button setAlignment:NSTextAlignmentLeft];
+            [button setTarget:self];
+            [button setAction:@selector(openBoardInGitHubClicked:)];
+            [button setAutoresizingMask:NSViewWidthSizable];
+            [cell addSubview:button];
+        } else {
+            button = (NSButton *)[[cell subviews] lastObject];
+        }
+        BOOL hasURL = ([board.url length] > 0);
+        [button setHidden:!hasURL];
+        [button setEnabled:hasURL];
+        [button setToolTip:hasURL
+            ? [NSString stringWithFormat:@"Open in GitHub — %@", board.url] : nil];
+        return cell;
     }
 
     if ([identifier isEqualToString:@"board"]) {

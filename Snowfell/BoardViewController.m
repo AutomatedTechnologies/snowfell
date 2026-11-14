@@ -153,6 +153,7 @@
 @property (nonatomic, strong, readwrite, nullable) BoardSummary *currentBoard;
 @property (nonatomic, strong, readwrite, nullable) BoardItem *selectedItem;
 @property (nonatomic, strong) NSPopUpButton *boardPopup;
+@property (nonatomic, strong) NSButton *gitHubButton;
 @property (nonatomic, strong) NSTextField *summaryField;
 @property (nonatomic, strong) NSScrollView *scrollView;
 @property (nonatomic, strong) BoardFlippedView *columnsView;
@@ -191,9 +192,22 @@
     _summaryField = [NSTextField labelWithString:@""];
     [_summaryField setFont:[AcademyTheme bodyFont]];
     [_summaryField setTextColor:[AcademyTheme inkSecondaryColor]];
-    [_summaryField setFrame:NSMakeRect(424, 620 - 33, 536, 20)];
+    [_summaryField setFrame:NSMakeRect(424, 620 - 33, 396, 20)];
     [_summaryField setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
     [root addSubview:_summaryField];
+
+    // snowfell-test-7: the selected board's own GitHub Projects page,
+    // opened in the owner's browser session via NSWorkspace (the
+    // stored sf_boards.url verbatim — no URL is constructed).
+    // Hidden whenever the shown board carries no stored URL.
+    _gitHubButton = [[NSButton alloc] initWithFrame:NSMakeRect(832, 620 - 38, 128, 28)];
+    [_gitHubButton setTitle:@"Open in GitHub"];
+    [_gitHubButton setBezelStyle:NSBezelStyleRounded];
+    [_gitHubButton setTarget:self];
+    [_gitHubButton setAction:@selector(openBoardInGitHubClicked:)];
+    [_gitHubButton setAutoresizingMask:NSViewMinXMargin | NSViewMinYMargin];
+    [_gitHubButton setHidden:YES];
+    [root addSubview:_gitHubButton];
 
     // SF-T4: create request. Enqueues a create_item mutation locally
     // (via createItemRequestHandler + the AppDelegate confirm sheet);
@@ -235,6 +249,7 @@
     if (boards == nil) {
         self.allBoards = @[];
         [_boardPopup removeAllItems];
+        [_gitHubButton setHidden:YES];
         [_summaryField setStringValue:[NSString stringWithFormat:
                                        @"Board unavailable — %@",
                                        (error != nil) ? error.localizedDescription : @"unknown error"]];
@@ -287,12 +302,28 @@
     }
 }
 
+// snowfell-test-7: open the shown board's GitHub Projects page in
+// the owner's default browser. The stored URL is used verbatim;
+// the button is hidden whenever the board carries none.
+- (void)openBoardInGitHubClicked:(id)sender {
+    if ([self.currentBoard.url length] == 0) {
+        return;
+    }
+    NSURL *url = [NSURL URLWithString:self.currentBoard.url];
+    if (url != nil) {
+        [[NSWorkspace sharedWorkspace] openURL:url];
+    }
+}
+
 #pragma mark - Board rendering
 
 - (void)showBoard:(BoardSummary *)board {
     self.currentBoard = board;
     self.selectedItem = nil;
     [self.cardViews removeAllObjects];
+    [_gitHubButton setHidden:([board.url length] == 0)];
+    [_gitHubButton setToolTip:([board.url length] > 0)
+        ? [NSString stringWithFormat:@"Open in GitHub — %@", board.url] : nil];
 
     NSError *error = nil;
     NSArray<NSString *> *options = [self.snapshotStore statusOptionsForBoard:board.nodeID error:&error];
