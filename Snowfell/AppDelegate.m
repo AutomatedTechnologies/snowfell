@@ -33,14 +33,17 @@
 // controllers, switched in place by displaySection:. The satellite
 // window properties (boardWindow / queueWindow / orchestrationWindow /
 // roadmapWindow / incidentsWindow / storageWindow / updatesWindow) are
-// GONE: their releasedWhenClosed lifetime web is also the test-5
-// Staged crash's fault path (files/11 + files/12). What remains a
-// window is auxiliary by design and carries no segment bar: Item
-// Detail (the Board's drill-down), the Command Palette panel, and
-// Preferences — each created with releasedWhenClosed = NO so a close
-// can never leave a dangling property behind.
+// GONE: their releasedWhenClosed lifetime web is the test-5 crash
+// fault path — BOTH crashes (Staged, files/11; Item Detail via the
+// Roadmap, Addendum 2) are the retain of a satellite window property's
+// freed value, proven by symbolication of the shipped binary
+// (files/12). Item Detail is an IN-PLACE drill-down in the main
+// window (presentDetailForItem:), not a window at all. What remains a
+// window is auxiliary by design and carries no segment bar: the
+// Command Palette panel and Preferences — each created with
+// releasedWhenClosed = NO so a close can never leave a dangling
+// property behind.
 @property (nonatomic, strong) NSWindow *mainWindow;
-@property (nonatomic, strong) NSWindow *detailWindow;
 @property (nonatomic, strong) NSPanel *palettePanel;
 @property (nonatomic, strong) NSWindow *preferencesWindow;
 @property (nonatomic, assign) SFNavigationSection currentSection;
@@ -706,8 +709,9 @@
 // DROPPED and rebuilds lazily against the new store the next time its
 // section is displayed; the section on screen is re-displayed fresh in
 // place — no window closes, because there are no satellite windows to
-// close. The auxiliary surfaces that read the old store (Item Detail,
-// the palette) close and rebuild on demand. (The local stores —
+// close. The surfaces that read the old store and are not lenses
+// (the Item Detail drill-down, the palette) are dropped/closed and
+// rebuild on demand. (The local stores —
 // write-back queue + dispatches — are snapshot-independent and are
 // never touched by a swap, so the Staged and Storage controllers,
 // which read only those, survive a swap intact.)
@@ -715,8 +719,6 @@
     self.snapshotStore = store;
     self.portfolioController = [[PortfolioViewController alloc] initWithSnapshotStore:store];
     [self wirePortfolioController];
-    [self.detailWindow close];
-    self.detailWindow = nil;
     self.detailController = nil;
     [self.palettePanel close];
     self.palettePanel = nil;
@@ -972,6 +974,16 @@
     [self.boardController showBoard:board];
 }
 
+// snowfell-test-6: Item Detail is the Board's drill-down IN PLACE —
+// the main window's content swaps to the detail controller, the title
+// names the drill-down, and the bar's selected segment stays Board
+// (the lens the detail belongs to; pressing Board, or any segment,
+// leaves the drill-down through displaySection:). There is no detail
+// window: the pre-test-6 detailWindow was the SECOND crash's fault
+// path (files/11 Addendum 2 — presentDetailForItem: + 569 is the
+// retain of the detailWindow getter's freed value after the window
+// had been closed; files/12). Callers (Board delegate, the Roadmap
+// timeline, the palette, ⌘3) all land here, unchanged.
 - (void)presentDetailForItem:(BoardItem *)item {
     if (self.detailController == nil) {
         self.detailController = [[ItemDetailViewController alloc] initWithSnapshotStore:self.snapshotStore];
@@ -982,27 +994,13 @@
             [weakSelf handleCommentRequestForItem:commentItem body:body completion:completion];
         };
     }
-    if (self.detailWindow == nil) {
-        NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 780, 580)
-                                                       styleMask:(NSWindowStyleMaskTitled |
-                                                                  NSWindowStyleMaskClosable |
-                                                                  NSWindowStyleMaskMiniaturizable |
-                                                                  NSWindowStyleMaskResizable)
-                                                         backing:NSBackingStoreBuffered
-                                                           defer:NO];
-        // snowfell-test-6: Item Detail is an auxiliary surface — it
-        // carries NO segment bar (the bar lives on the main window
-        // only), and its lifetime is not tied to its closed state:
-        // it is re-shown from this property after every close.
-        [window setReleasedWhenClosed:NO];
-        [window setTitle:@"Snowfell — Item Detail"];
-        [window setContentViewController:self.detailController];
-        [window setMinSize:NSMakeSize(620, 460)];
-        [window center];
-        self.detailWindow = window;
-    }
     [self.detailController showItem:item];
-    [self.detailWindow makeKeyAndOrderFront:nil];
+    if ([self.mainWindow contentViewController] != self.detailController) {
+        [self.mainWindow setContentViewController:self.detailController];
+    }
+    [self.mainWindow setTitle:@"Snowfell — Item Detail"];
+    [NavigationBar selectSection:SFNavigationSectionBoard inWindow:self.mainWindow];
+    [self.mainWindow makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
 }
 
@@ -1474,7 +1472,7 @@
     if ([item.contentKind isEqualToString:@"DraftIssue"]) {
         [effect appendString:@"\n\nNote: GitHub offers NO comment mutation for draft issues — when a send is attempted this row will fail with that reason, on the record. (A draft's body is edited instead; that operation is outside write-back v1.)"];
     }
-    [self confirmEnqueueOnWindow:self.detailWindow
+    [self confirmEnqueueOnWindow:self.mainWindow
                      messageText:[NSString stringWithFormat:@"Comment on “%@”?", item.title]
                 informativeText:[NSString stringWithFormat:@"%@\n\n%@", body, [self writeBackConfirmPreamble]]
                     detailsText:[self writeBackConfirmDetailsForEffect:effect]
@@ -1495,7 +1493,7 @@
                                   boardID:item.boardID
                                    itemID:item.nodeID
                                   payload:payload
-                              sheetWindow:self.detailWindow];
+                              sheetWindow:self.mainWindow];
         completion(enqueued);
     }];
 }
