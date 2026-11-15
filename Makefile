@@ -22,6 +22,8 @@ SOURCES = \
 	Snowfell/IncidentsViewController.m \
 	Snowfell/StorageViewController.m \
 	Snowfell/NavigationBar.m \
+	Snowfell/PilesViewController.m \
+	Snowfell/PileStore.m \
 	Snowfell/UpdatesViewController.m \
 	Snowfell/CloudServiceClient.m \
 	Snowfell/CloudModels.m \
@@ -57,6 +59,8 @@ HEADERS = \
 	Snowfell/IncidentsViewController.h \
 	Snowfell/StorageViewController.h \
 	Snowfell/NavigationBar.h \
+	Snowfell/PilesViewController.h \
+	Snowfell/PileStore.h \
 	Snowfell/UpdatesViewController.h \
 	Snowfell/CloudServiceClient.h \
 	Snowfell/CloudModels.h \

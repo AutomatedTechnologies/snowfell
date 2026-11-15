@@ -20,7 +20,7 @@ static const void *SFNavigationBarBuilderKey = &SFNavigationBarBuilderKey;
 
 + (NSArray<NSString *> *)sectionLabels {
     return @[@"Portfolio", @"Board", @"Staged", @"Orchestration",
-             @"Roadmap", @"Incidents", @"Storage", @"Updates"];
+             @"Roadmap", @"Incidents", @"Storage", @"Updates", @"Piles"];
 }
 
 + (void)attachToWindow:(NSWindow *)window

@@ -3,7 +3,7 @@
 // navigation bar"). snowfell-test-6 (owner verdict 2026-11-14) put the
 // bar on the ONE main window only: its NSToolbar (identifier
 // SnowfellNavigationToolbar) hosts a single custom item with an
-// NSSegmentedControl carrying the eight lenses in View-menu (⌘) order,
+// NSSegmentedControl carrying the nine lenses in View-menu (⌘) order,
 // and AppDelegate switches the window's content view controller in
 // place per segment. Auxiliary surfaces (Item Detail, Preferences, the
 // ⌘K palette panel) carry no bar. AppDelegate supplies the target +
@@ -14,9 +14,12 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-// The eight navigable sections, in segment order — the same order as
-// the View menu's ⌘1–⌘9 lens items (Item Detail ⌘3 has no segment: it
-// is the Board's drill-down, so the Detail window selects Board).
+// The nine navigable sections, in segment order — the same order as
+// the View menu's lens items (Item Detail ⌘3 has no segment: it is
+// the Board's drill-down, so the Detail window selects Board).
+// snowfell-test-8 (design record 13): SFNavigationSectionPiles is
+// APPENDED after Updates as the 9th segment (value 8); no existing
+// segment is reordered or renumbered.
 typedef NS_ENUM(NSInteger, SFNavigationSection) {
     SFNavigationSectionPortfolio = 0,
     SFNavigationSectionBoard,
@@ -26,6 +29,7 @@ typedef NS_ENUM(NSInteger, SFNavigationSection) {
     SFNavigationSectionIncidents,
     SFNavigationSectionStorage,
     SFNavigationSectionUpdates,
+    SFNavigationSectionPiles,
 };
 
 extern NSToolbarIdentifier const SFNavigationToolbarIdentifier;

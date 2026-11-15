@@ -42,6 +42,13 @@ smoke_surfaces.py         headless SF-T7 + SF-T11 proof (roadmap
                           denominator, palette scope counts, the
                           incident queue in deadline order, and the
                           incident dispatch enqueue path; output below)
+smoke_piles.py            headless snowfell-test-8 proof (design
+                          record 13: PileStore's schema + SQL mirrored
+                          against a scratch local store + the bundled
+                          snapshot — every item in exactly one pile,
+                          Inbox == statusless count, move/clear-top/
+                          delete-rehome hold the invariant, reconcile
+                          idempotent)
 Snowfell/
   main.m                  NSApplication + AppDelegate, no nib
   AppDelegate.h/.m        code-constructed menu bar (SDS-10 §10.4), main
@@ -136,6 +143,22 @@ Snowfell/
                           a local sf_audit_log-shaped table. Enqueue /
                           list / state transitions only; the snapshot is
                           never opened by this class
+  PilesViewController.h/.m
+                          the Piles lens (snowfell-test-8, design
+                          record 13 §4): pile list (name + count + top
+                          item) left, the selected pile's stack right
+                          with a NEXT ACTION card for the top item;
+                          Move to Pile… / Make Top / Clear Top, custom
+                          piles, within-stack drag reorder, double-click
+                          to Item Detail. 9th segment (⌘0)
+  PileStore.h/.m          snowfell-test-8: the local pile store — a
+                          sibling table set (sf_piles / sf_pile_items)
+                          in the SAME writeback.db file, sharing the
+                          one local_audit_log, on the DispatchStore
+                          pattern. UNIQUE(item_node_id) is the
+                          one-pile-per-item invariant. Snapshot reads
+                          go only through SnapshotStore's public
+                          queries; no network code, no GitHub path
   DispatchStore.h/.m      SF-T5: the estate-lane dispatch store — a
                           sibling table set (local_dispatches) in the
                           SAME writeback.db file, sharing the one

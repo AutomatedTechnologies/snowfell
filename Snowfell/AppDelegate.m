@@ -11,6 +11,8 @@
 #import "IncidentModels.h"
 #import "StorageViewController.h"
 #import "UpdatesViewController.h"
+#import "PilesViewController.h"
+#import "PileStore.h"
 #import "NavigationBar.h"
 #import "CloudServiceClient.h"
 #import "AcademyTheme.h"
@@ -29,7 +31,7 @@
 // snowfell-test-6: SINGLE-WINDOW model (owner verdict 2026-11-14: the
 // test-4 bar "haphazard and inconsistent — some buttons open new
 // windows, others open in same"). There is exactly ONE lens window —
-// mainWindow — and all eight lenses live in it as content view
+// mainWindow — and all nine lenses live in it as content view
 // controllers, switched in place by displaySection:. The satellite
 // window properties (boardWindow / queueWindow / orchestrationWindow /
 // roadmapWindow / incidentsWindow / storageWindow / updatesWindow) are
@@ -60,6 +62,12 @@
 // snowfell-test-4: the Updates lens (⌘9) — reads the same sync session
 // state the Preferences block shows, refreshed by the same push.
 @property (nonatomic, strong) UpdatesViewController *updatesController;
+// snowfell-test-8 (design record 13): the Piles lens — its controller
+// plus the local PileStore (same writeback.db file as the other local
+// stores; snapshot reads only through SnapshotStore's public queries).
+@property (nonatomic, strong) PilesViewController *pilesController;
+@property (nonatomic, strong, nullable) PileStore *pileStore;
+@property (nonatomic, strong, nullable) NSError *pileStoreError;
 // SF-T12f: the Storage lens's REST client — created LAZILY by its
 // getter on first use (the client itself is stateless apart from its
 // session; the operator token is never held here or anywhere but the
@@ -117,6 +125,14 @@
     self.dispatchStore = [[DispatchStore alloc] initWithStorePath:[DispatchStore defaultStorePath]
                                                             error:&dispatchError];
     self.dispatchStoreError = dispatchError;
+    // snowfell-test-8: open the pile store (same file, its own table
+    // set). Opening it materializes nothing — materialization +
+    // reconcile run on the Piles lens's first load.
+    NSError *pileError = nil;
+    self.pileStore = [[PileStore alloc] initWithStorePath:[PileStore defaultStorePath]
+                                           snapshotStore:self.snapshotStore
+                                                   error:&pileError];
+    self.pileStoreError = pileError;
     self.githubClient = [[GitHubProjectsClient alloc] init];
     // SF-T6: stand up the sync object + its initial (unchecked) state.
     // No fetch happens here — sync starts at the owner's Check Now.
@@ -316,6 +332,15 @@
                                            target:self];
     [updatesItem setTag:211];
     [viewMenu addItem:updatesItem];
+    // snowfell-test-8 (design record 13 section 4): the Piles lens,
+    // View-menu item on Cmd-0 (Cmd-1..Cmd-9 are taken by the existing
+    // nine surfaces); the segment is appended after Updates.
+    NSMenuItem *pilesItem = [self itemWithTitle:@"Piles"
+                                         action:@selector(showPiles:)
+                                  keyEquivalent:@"0"
+                                         target:self];
+    [pilesItem setTag:212];
+    [viewMenu addItem:pilesItem];
     [viewMenu addItem:[NSMenuItem separatorItem]];
     // SF-T7: ⌘K is an ordinary app-menu item — the app's ONLY palette
     // registration (no global hotkey, nothing outside this menu).
@@ -337,6 +362,19 @@
     [viewMenuItem setTitle:@"View"];
     [viewMenuItem setSubmenu:viewMenu];
     [mainMenu addItem:viewMenuItem];
+
+    // — Piles menu (snowfell-test-8, design record 13 section 4) —
+    NSMenu *pilesMenu = [[NSMenu alloc] initWithTitle:@"Piles"];
+    NSMenuItem *moveItem = [self itemWithTitle:@"Move to Pile…"
+                                        action:@selector(moveSelectedPileItem:)
+                                 keyEquivalent:@"m"
+                                        target:self];
+    [moveItem setTag:213];
+    [pilesMenu addItem:moveItem];
+    NSMenuItem *pilesMenuItem = [[NSMenuItem alloc] init];
+    [pilesMenuItem setTitle:@"Piles"];
+    [pilesMenuItem setSubmenu:pilesMenu];
+    [mainMenu addItem:pilesMenuItem];
 
     // — Window menu —
     NSMenu *windowMenu = [[NSMenu alloc] initWithTitle:@"Window"];
@@ -429,6 +467,12 @@
     }
     if ([menuItem tag] == 211) {
         return YES;  // the Updates lens always opens; it states the sync session's state
+    }
+    if ([menuItem tag] == 212) {
+        return YES;  // the Piles lens always opens; it states its own state
+    }
+    if ([menuItem tag] == 213) {
+        return self.currentSection == SFNavigationSectionPiles;
     }
     if ([menuItem tag] == 302) {
         // Checking is always safe: it is a read-only GET of the Academy's
@@ -728,6 +772,16 @@
     self.roadmapController = nil;
     self.incidentsController = nil;
     self.updatesController = nil;
+    // Piles: the controller drops and the pile store re-opens against
+    // the new snapshot store (same local file; reconcile on next load
+    // places any newly appeared items by the section-3 rule).
+    self.pilesController = nil;
+    [self.pileStore close];
+    NSError *pileError = nil;
+    self.pileStore = [[PileStore alloc] initWithStorePath:[PileStore defaultStorePath]
+                                           snapshotStore:store
+                                                   error:&pileError];
+    self.pileStoreError = pileError;
     [self displaySection:self.currentSection];
 }
 
@@ -1221,6 +1275,18 @@
             controller = self.updatesController;
             title = @"Snowfell — Updates";
             break;
+        case SFNavigationSectionPiles:
+            if (self.pilesController == nil) {
+                self.pilesController = [[PilesViewController alloc] initWithPileStore:self.pileStore
+                                                                        snapshotStore:self.snapshotStore];
+                __weak AppDelegate *weakSelf = self;
+                self.pilesController.itemActivationHandler = ^(BoardItem *item) {
+                    [weakSelf presentDetailForItem:item];
+                };
+            }
+            controller = self.pilesController;
+            title = @"Snowfell — Piles";
+            break;
     }
     if (controller == nil) {
         return;
@@ -1250,6 +1316,9 @@
         case SFNavigationSectionUpdates:
             [self refreshSnapshotSyncBlock];
             break;
+        case SFNavigationSectionPiles:
+            [self.pilesController reloadPiles];
+            break;
         default:
             break;
     }
@@ -1270,6 +1339,17 @@
 
 - (IBAction)showUpdates:(id)sender {
     [self displaySection:SFNavigationSectionUpdates];
+}
+
+#pragma mark - snowfell-test-8 Piles (design record 13)
+
+- (IBAction)showPiles:(id)sender {
+    [self displaySection:SFNavigationSectionPiles];
+}
+
+// Piles menu / Cmd-M: Move to Pile... for the selected stack row.
+- (IBAction)moveSelectedPileItem:(id)sender {
+    [self.pilesController moveSelectedItemToPile:sender];
 }
 
 // The primary line every staging confirm carries, in the owner's
@@ -1654,10 +1734,18 @@
      @"never is). The lens starts/stops the bundled helper and pairs "
      @"the operator token into the Keychain on first use; without a "
      @"token it shows the pairing pane instead of data.\n\n"
+     @"Piles (snowfell-test-8): View ▸ Piles (⌘0) is the pile "
+     @"organizational method — every item lives in exactly one pile, "
+     @"the top of a pile is the next action, and clearing the top is "
+     @"the only way the item below becomes actionable. Items with no "
+     @"Status land in the Inbox; every board is a pile; Move to Pile… "
+     @"(⌘M), Make Top, Clear Top, and within-stack drag reorder are "
+     @"local organizational acts kept on this Mac — they never leave "
+     @"it and never change an item's Status.\n\n"
      @"Navigation bar + Updates (snowfell-test-4; single-window model "
      @"snowfell-test-6): one window carries the navigation bar — "
      @"Portfolio, Board, Staged, Orchestration, Roadmap, Incidents, "
-     @"Storage, Updates — and clicking a segment switches the lens in "
+     @"Storage, Updates, Piles — and clicking a segment switches the lens in "
      @"that same window; the filled segment always names the lens on "
      @"screen, and the View menu's ⌘1–⌘9 items land on the same "
      @"lenses. View ▸ Updates (⌘9) shows the running snapshot next to "
