@@ -22,6 +22,22 @@ jobs:
           iconutil -c icns Snowfell/Resources/AppIcon.iconset -o Snowfell/Resources/Snowfell.icns
           ls -la Snowfell/Resources/Snowfell.icns
 
+      - name: Build shared session core + minion CLI (merge M3/M4, version-stamped)
+        run: |
+          # The ONE session core (MinionCore/) builds FIRST, stamped
+          # with the bundle's CFBundleShortVersionString — one version
+          # identity (merge architecture section C): the same stamped
+          # archive links into the app for the Terminal lens, and the
+          # same objects build the `minion` binary bundled below. The
+          # app target's own core dependency is then already satisfied
+          # and is NOT rebuilt unstamped.
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Snowfell/Info.plist)
+          echo "core version stamp: $VERSION"
+          make -C MinionCore CC="clang -target x86_64-apple-macos10.13" VERSION="$VERSION" core minion 2>&1 | tee core-build.log
+          test -f MinionCore/libminioncore.a
+          test -x MinionCore/minion
+          file MinionCore/minion
+
       - name: Build app (make app — clang, unsigned, x86_64, 10.13 floor)
         run: |
           set -o pipefail
@@ -47,6 +63,13 @@ jobs:
           chmod +x "Snowfell.app/Contents/MacOS/SnowfellStorageService"
           ls -la Snowfell.app/Contents/MacOS/
 
+      - name: Bundle the minion CLI binary (merge M4 — Contents/MacOS/minion)
+        run: |
+          cp MinionCore/minion "Snowfell.app/Contents/MacOS/minion"
+          chmod +x "Snowfell.app/Contents/MacOS/minion"
+          file "Snowfell.app/Contents/MacOS/minion"
+          ls -la Snowfell.app/Contents/MacOS/
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
@@ -54,18 +77,17 @@ jobs:
           name: clang-log
           path: |
             clang.log
+            core-build.log
             service-build.log
 
-      # Build identity is FIXED at snowfell-test-8 for this build line:
+      # Build identity is FIXED at snowfell-test-9 for this build line:
       # github.run_number counts CI attempts, not builds. The attempt
-      # number stays visible in the release notes stamp. (test-2 note:
-      # its attempt 2 failed at the storage-service step on strict-C99
-      # header visibility — the gnu99 fix below is that build's.)
+      # number stays visible in the release notes stamp.
       - name: Stamp build version and package app as zip
         if: success()
         run: |
           APP="Snowfell.app"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion snowfell-test-8" "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion snowfell-test-9" "$APP/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Contents/Info.plist"
@@ -87,12 +109,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           BUILT=$(date -u '+%Y-%m-%d %H:%M UTC')
-          NOTES="Internal test build of Snowfell, the Detroit Automation Academy's Jira-style board app over GitHub Projects for macOS High Sierra: every Academy project board in ONE native window — a navigation bar whose nine segments switch the lens in place (portfolio, per-board kanban in each board's own status vocabulary, staged changes, orchestration, roadmap, incidents, storage, updates, piles), item detail, command palette, reading a pinned, hash-verified registry snapshot, fully offline. Write-back is compiled OFF in this build. Publisher: Detroit Automation Academy. Unsigned test build — not gate-cleared, not yet verified on the High Sierra rig; install from the Distro catalog (testing).
+          NOTES="Internal test build of Snowfell, the Detroit Automation Academy's Jira-style board app over GitHub Projects for macOS High Sierra: every Academy project board in ONE native window — a navigation bar whose ten segments switch the lens in place (terminal, portfolio, per-board kanban in each board's own status vocabulary, staged changes, orchestration, roadmap, incidents, storage, updates, piles), item detail, command palette, reading a pinned, hash-verified registry snapshot, fully offline. Write-back is compiled OFF in this build. Publisher: Detroit Automation Academy. Unsigned test build — not gate-cleared, not yet verified on the High Sierra rig; install from the Distro catalog (testing).
 
-          NEW IN snowfell-test-8 (Snowfell development coordinator build under the owner's delegation directive of 2026-11-13, 22:40 EST): THE PILES LENS — the pile organizational method, on the owner's directive of 2026-11-15 (“instantiate pile organizational method in snowfell”; design record 13). A ninth segment, Piles (View menu Cmd-0), carries named stacks with a strict working order: every item lives in exactly one pile (enforced by a UNIQUE constraint in the local store), items with no Status land in the Inbox, every board is a pile ordered by its own Status vocabulary, and the top of the selected pile is presented as the NEXT ACTION. Move to Pile…, Make Top, Clear Top (to the Done pile), custom piles (deleting one rehomes its items to the Inbox), and within-stack drag reorder are local organizational acts only — pile membership never leaves this Mac, is never staged into the write-back queue, and the pile code has no GitHub path. Everything snowfell-test-7 shipped carries over unchanged: the per-board “Open in GitHub” link, the single-window navigation, the fix for both test-5 crashes, glanceable freshness, the Portfolio Updated column on the bundled snapshot v10-0058, the M-09 storage-service bind clamp, decluttered staging language, SF-T12 storage, board-state derivation. Safety properties are unchanged: write-back remains compiled OFF.
+          NEW IN snowfell-test-9 (merge tranche M4 — the Snowfell + Minion + CLI merge, architecture of record 2026-11-14; gate G3 closed by the owner's S4 PASS on snowfell-test-8, 2026-11-17): THE TERMINAL LENS — the merged app's primary interface and its LAUNCH HOME. A tenth segment, Terminal (appended after Piles; the View menu item carries no Cmd key — Cmd-1 through Cmd-9 and Cmd-0 were all already assigned), opens as the window's first surface, prompt focused. The lens and the newly bundled minion CLI binary (Contents/MacOS/minion) are two front-ends over ONE shared session core (extracted in tranche M3; bridge.h unchanged): every line is enqueued first and drained head-first — FIFO, never superseded, never time-capped — with streaming snapshot-diff rendering, a Stop control on the core's interrupt flag, type-ahead while a turn streams, and the CLI's local commands at parity (/help /clear /view /status /quit). The status strip carries session state, snapshot version + freshness, and queue depth / staged count. Both front-ends report the bundle's version (0.1.0) from one stamped core build. HONEST SEAM STATE: the bridge's wire seam is UNCONFIRMED until the owner's T4 wire capture (tranche M6); with no session cookie supplied, a send stops at the auth boundary before any network traffic — nothing is sent — and GUI Keychain cookie custody is M6 work, not in this build. Everything snowfell-test-8 shipped carries over unchanged: the Piles lens, the per-board “Open in GitHub” link, the single-window navigation, the fix for both test-5 crashes, glanceable freshness, the Portfolio Updated column on the bundled snapshot v10-0058, the M-09 storage-service bind clamp, decluttered staging language, SF-T12 storage, board-state derivation. Safety properties are unchanged: write-back remains compiled OFF.
 
-          BUILD STAMP — Built: $BUILT · Build: snowfell-test-8 (CI run ${{ github.run_id }}, attempt ${{ github.run_number }}) · Agent: Minion · Authorized: J. Spencer Smith, directive of 2026-11-13 (Snowfell backlog continuation, coordinator full delegation 22:40 EST); pile organizational method directive of 2026-11-15"
-          gh release create snowfell-test-8 Snowfell-test.zip \
+          BUILD STAMP — Built: $BUILT · Build: snowfell-test-9 (CI run ${{ github.run_id }}, attempt ${{ github.run_number }}) · Agent: Minion · Authorized: J. Spencer Smith, directive of 2026-11-14 (Snowfell + Minion + CLI merge into one application); merge gate G3 closed by the owner's device-testing verdict on snowfell-test-8, 2026-11-17"
+          gh release create snowfell-test-9 Snowfell-test.zip \
             --prerelease \
-            --title "Snowfell test build 8" \
+            --title "Snowfell test build 9" \
             --notes "$NOTES"

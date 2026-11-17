@@ -22,6 +22,7 @@ SOURCES = \
 	Snowfell/IncidentsViewController.m \
 	Snowfell/StorageViewController.m \
 	Snowfell/NavigationBar.m \
+	Snowfell/TerminalViewController.m \
 	Snowfell/PilesViewController.m \
 	Snowfell/PileStore.m \
 	Snowfell/UpdatesViewController.m \
@@ -59,6 +60,7 @@ HEADERS = \
 	Snowfell/IncidentsViewController.h \
 	Snowfell/StorageViewController.h \
 	Snowfell/NavigationBar.h \
+	Snowfell/TerminalViewController.h \
 	Snowfell/PilesViewController.h \
 	Snowfell/PileStore.h \
 	Snowfell/UpdatesViewController.h \
@@ -110,7 +112,8 @@ RESOURCES = \
 SDK ?= $(HOME)/workspace/tools/sdks/MacOSX10.13.sdk
 CLANG ?= clang
 CHECKFLAGS = -target x86_64-apple-darwin17 -isysroot $(SDK) \
-	-fobjc-runtime=macosx-10.13 -fobjc-arc -fsyntax-only -ISnowfell
+	-fobjc-runtime=macosx-10.13 -fobjc-arc -fsyntax-only -ISnowfell \
+	-IMinionCore/core
 
 .PHONY: check app
 check:
@@ -120,14 +123,25 @@ check:
 	done
 	@echo "ALL SYNTAX OK"
 
-app:
+# The Terminal lens links the ONE shared session core (merge tranche
+# M3/M4): MinionCore/libminioncore.a is built by MinionCore/Makefile
+# from the vendored core/ sources — the same objects the bundled
+# `minion` CLI binary is built from. CI builds the core first with
+# the bundle's version stamp (one version identity, architecture §C);
+# a plain local `make app` builds it unstamped (0.0.0-dev fallback).
+MinionCore/libminioncore.a:
+	$(MAKE) -C MinionCore core
+
+app: MinionCore/libminioncore.a
 	if [ "$$(uname)" != "Darwin" ]; then \
 		echo "make app requires macOS (system clang + AppKit)" >&2; exit 1; \
 	fi
 	rm -rf Snowfell.app
 	mkdir -p Snowfell.app/Contents/MacOS Snowfell.app/Contents/Resources
 	$(CLANG) -target x86_64-apple-macos10.13 -fobjc-arc -ISnowfell \
+		-IMinionCore/core \
 		-framework AppKit -framework Foundation -framework Security -lsqlite3 \
+		MinionCore/libminioncore.a -lcurl \
 		-o Snowfell.app/Contents/MacOS/Snowfell $(SOURCES)
 	cp Snowfell/Info.plist Snowfell.app/Contents/Info.plist
 	cp $(RESOURCES) Snowfell.app/Contents/Resources/

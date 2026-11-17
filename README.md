@@ -143,6 +143,40 @@ Snowfell/
                           a local sf_audit_log-shaped table. Enqueue /
                           list / state transitions only; the snapshot is
                           never opened by this class
+  TerminalViewController.h/.m
+                          the Terminal lens (snowfell-test-9, merge
+                          tranche M4): the merged app's primary
+                          interface and its LAUNCH HOME — 10th segment
+                          (appended after Piles; View ▸ Terminal, no ⌘
+                          key: ⌘1–⌘9 and ⌘0 were all taken). A prompt +
+                          transcript over the ONE shared session core
+                          (MinionCore/ below): lines enqueue first and
+                          drain head-first (FIFO, never superseded,
+                          never time-capped), DELTA snapshot-diff
+                          rendering, Stop = the core's interrupt flag,
+                          local commands at CLI parity (/help /clear
+                          /view honest stub /status /quit). Status
+                          strip: session state · snapshot version +
+                          freshness · core queue depth / staged count.
+                          The bridge's wire seam is UNCONFIRMED until
+                          the owner's T4 capture (M6); with no session
+                          cookie a send stops at the auth boundary —
+                          nothing is sent. GUI Keychain cookie custody
+                          is M6, not in this build
+  MinionCore/             merge tranche M3/M4: the shared session core
+                          (core/ — queue/session/bridge behind the
+                          unchanged bridge.h — plus the cli/ front-end
+                          and tests/), vendored byte-identical from the
+                          minion-cli program of record. Build order:
+                          `make -C MinionCore core minion` builds
+                          libminioncore.a + the `minion` binary; the
+                          app target depends on the archive, and CI
+                          copies the binary to
+                          Contents/MacOS/minion in the bundle. CI
+                          stamps the core with the bundle's
+                          CFBundleShortVersionString (one version
+                          identity); unstamped builds report the
+                          labeled 0.0.0-dev fallback
   PilesViewController.h/.m
                           the Piles lens (snowfell-test-8, design
                           record 13 §4): pile list (name + count + top

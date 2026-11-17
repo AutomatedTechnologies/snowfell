@@ -3,7 +3,7 @@
 // navigation bar"). snowfell-test-6 (owner verdict 2026-11-14) put the
 // bar on the ONE main window only: its NSToolbar (identifier
 // SnowfellNavigationToolbar) hosts a single custom item with an
-// NSSegmentedControl carrying the nine lenses in View-menu (⌘) order,
+// NSSegmentedControl carrying the ten lenses in View-menu (⌘) order,
 // and AppDelegate switches the window's content view controller in
 // place per segment. Auxiliary surfaces (Item Detail, Preferences, the
 // ⌘K palette panel) carry no bar. AppDelegate supplies the target +
@@ -14,12 +14,17 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-// The nine navigable sections, in segment order — the same order as
+// The ten navigable sections, in segment order — the same order as
 // the View menu's lens items (Item Detail ⌘3 has no segment: it is
 // the Board's drill-down, so the Detail window selects Board).
 // snowfell-test-8 (design record 13): SFNavigationSectionPiles is
 // APPENDED after Updates as the 9th segment (value 8); no existing
 // segment is reordered or renumbered.
+// snowfell-test-9 (merge tranche M4): SFNavigationSectionTerminal is
+// APPENDED after Piles as the 10th segment (value 9) — the Terminal
+// lens, the merged app's primary interface and its launch home. The
+// ⌘1–⌘9 and ⌘0 View-menu keys were all already assigned when
+// Terminal landed, so Terminal carries no ⌘ key (record 15).
 typedef NS_ENUM(NSInteger, SFNavigationSection) {
     SFNavigationSectionPortfolio = 0,
     SFNavigationSectionBoard,
@@ -30,6 +35,7 @@ typedef NS_ENUM(NSInteger, SFNavigationSection) {
     SFNavigationSectionStorage,
     SFNavigationSectionUpdates,
     SFNavigationSectionPiles,
+    SFNavigationSectionTerminal,
 };
 
 extern NSToolbarIdentifier const SFNavigationToolbarIdentifier;

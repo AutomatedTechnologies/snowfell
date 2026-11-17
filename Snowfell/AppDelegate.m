@@ -12,6 +12,7 @@
 #import "StorageViewController.h"
 #import "UpdatesViewController.h"
 #import "PilesViewController.h"
+#import "TerminalViewController.h"
 #import "PileStore.h"
 #import "NavigationBar.h"
 #import "CloudServiceClient.h"
@@ -32,7 +33,8 @@
 // test-4 bar "haphazard and inconsistent — some buttons open new
 // windows, others open in same"). There is exactly ONE lens window —
 // mainWindow — and all nine lenses live in it as content view
-// controllers, switched in place by displaySection:. The satellite
+// controllers, switched in place by displaySection: (ten lenses
+// since snowfell-test-9 added the Terminal). The satellite
 // window properties (boardWindow / queueWindow / orchestrationWindow /
 // roadmapWindow / incidentsWindow / storageWindow / updatesWindow) are
 // GONE: their releasedWhenClosed lifetime web is the test-5 crash
@@ -66,6 +68,12 @@
 // plus the local PileStore (same writeback.db file as the other local
 // stores; snapshot reads only through SnapshotStore's public queries).
 @property (nonatomic, strong) PilesViewController *pilesController;
+// snowfell-test-9 (merge tranche M4): the Terminal lens — the merged
+// app's primary interface and its LAUNCH HOME (merge architecture
+// section D). Created at launch; never dropped on a snapshot swap
+// (its session core is snapshot-independent; the swap re-points it
+// via adoptSnapshotStore:).
+@property (nonatomic, strong) TerminalViewController *terminalController;
 @property (nonatomic, strong, nullable) PileStore *pileStore;
 @property (nonatomic, strong, nullable) NSError *pileStoreError;
 // SF-T12f: the Storage lens's REST client — created LAZILY by its
@@ -142,6 +150,13 @@
     self.portfolioController = [[PortfolioViewController alloc] initWithSnapshotStore:self.snapshotStore];
     [self wirePortfolioController];
 
+    // snowfell-test-9 (merge tranche M4): the Terminal lens is the
+    // merged app's launch home — the window opens on the owner's
+    // command seat, prompt focused (the welcome sheet still presents
+    // over it). The lens opens its core session on its own queue.
+    self.terminalController = [[TerminalViewController alloc] initWithSnapshotStore:self.snapshotStore
+                                                                     writeBackQueue:self.writeBackQueue];
+
     // snowfell-test-6 sizing rule (the ONE rule, of record in files/12):
     // the single window's frame NEVER changes on a lens switch, and its
     // minimum size is the largest lens's own requirement — the
@@ -157,16 +172,17 @@
                                                     backing:NSBackingStoreBuffered
                                                       defer:NO];
     [self.mainWindow setReleasedWhenClosed:NO];
-    [self.mainWindow setTitle:@"Snowfell — Portfolio"];
+    [self.mainWindow setTitle:@"Snowfell — Terminal"];
     // snowfell-test-2 uplift: the baseline window field (--win #f6f6f6)
     // behind every lens hosted in the main window.
     [self.mainWindow setBackgroundColor:[AcademyTheme windowColor]];
-    [self.mainWindow setContentViewController:self.portfolioController];
-    [self attachNavigationBarToWindow:self.mainWindow section:SFNavigationSectionPortfolio];
+    [self.mainWindow setContentViewController:self.terminalController];
+    [self attachNavigationBarToWindow:self.mainWindow section:SFNavigationSectionTerminal];
     [self.mainWindow setMinSize:NSMakeSize(1180, 720)];
-    self.currentSection = SFNavigationSectionPortfolio;
+    self.currentSection = SFNavigationSectionTerminal;
     [self.mainWindow center];
     [self.mainWindow makeKeyAndOrderFront:nil];
+    [self.terminalController focusPrompt];
 
     // SDS-8 welcome + SDS-10 startup surfaces (logo / version / sound).
     self.welcomeController = [[AcademyWelcomeController alloc] initWithSnapshotStore:self.snapshotStore];
@@ -341,6 +357,16 @@
                                          target:self];
     [pilesItem setTag:212];
     [viewMenu addItem:pilesItem];
+    // snowfell-test-9 (merge tranche M4): the Terminal lens, appended
+    // after Piles. NO ⌘ key: ⌘1–⌘9 and ⌘0 were all already assigned
+    // when Terminal landed (record 15) — the segment and this item
+    // are its routes in.
+    NSMenuItem *terminalItem = [self itemWithTitle:@"Terminal"
+                                            action:@selector(showTerminal:)
+                                     keyEquivalent:@""
+                                            target:self];
+    [terminalItem setTag:214];
+    [viewMenu addItem:terminalItem];
     [viewMenu addItem:[NSMenuItem separatorItem]];
     // SF-T7: ⌘K is an ordinary app-menu item — the app's ONLY palette
     // registration (no global hotkey, nothing outside this menu).
@@ -782,6 +808,9 @@
                                            snapshotStore:store
                                                    error:&pileError];
     self.pileStoreError = pileError;
+    // Terminal: NOT dropped — its core session is snapshot-
+    // independent. Re-point the lens at the new store in place.
+    [self.terminalController adoptSnapshotStore:store];
     [self displaySection:self.currentSection];
 }
 
@@ -802,6 +831,13 @@
         self.updatesController.stagedUpdateAvailable =
             (self.stagedDatabasePath != nil && self.stagedManifestPath != nil);
         [self.updatesController refreshUpdates];
+    }
+    // snowfell-test-9: the Terminal strip's snapshot line refreshes
+    // from the SAME push — served version + status text, every step.
+    if (self.terminalController != nil) {
+        self.terminalController.servedVersion = self.servedManifest[@"version"];
+        self.terminalController.syncStatusText = self.syncStatusText;
+        [self.terminalController refreshTerminal];
     }
     // snowfell-test-5 freshness surfacing (freshness remainder, board
     // #78): the SAME session state drives two glanceable surfaces —
@@ -1287,6 +1323,16 @@
             controller = self.pilesController;
             title = @"Snowfell — Piles";
             break;
+        case SFNavigationSectionTerminal:
+            if (self.terminalController == nil) {
+                self.terminalController = [[TerminalViewController alloc] initWithSnapshotStore:self.snapshotStore
+                                                                                  writeBackQueue:self.writeBackQueue];
+                self.terminalController.servedVersion = self.servedManifest[@"version"];
+                self.terminalController.syncStatusText = self.syncStatusText;
+            }
+            controller = self.terminalController;
+            title = @"Snowfell — Terminal";
+            break;
     }
     if (controller == nil) {
         return;
@@ -1319,6 +1365,10 @@
         case SFNavigationSectionPiles:
             [self.pilesController reloadPiles];
             break;
+        case SFNavigationSectionTerminal:
+            [self.terminalController refreshTerminal];
+            [self.terminalController focusPrompt];
+            break;
         default:
             break;
     }
@@ -1345,6 +1395,12 @@
 
 - (IBAction)showPiles:(id)sender {
     [self displaySection:SFNavigationSectionPiles];
+}
+
+#pragma mark - snowfell-test-9 Terminal (merge tranche M4)
+
+- (IBAction)showTerminal:(id)sender {
+    [self displaySection:SFNavigationSectionTerminal];
 }
 
 // Piles menu / Cmd-M: Move to Pile... for the selected stack row.
